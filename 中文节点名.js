@@ -10,6 +10,63 @@
 
 const SEPARATOR_PATTERN = String.raw`(?:[\s._\-/]*)`;
 
+const LOCATION_CODES = {
+  香港: ["hk", "hkg"],
+  澳门: ["mo", "mac"],
+  台湾: ["tw", "twn"],
+  中国: ["cn", "chn"],
+  日本: ["jp", "jpn"],
+  韩国: ["kr", "kor"],
+  新加坡: ["sg", "sgp"],
+  马来西亚: ["my", "mys"],
+  泰国: ["th", "tha"],
+  菲律宾: ["ph", "phl"],
+  越南: ["vn", "vnm"],
+  印度: ["in", "ind"],
+  印度尼西亚: ["id", "idn"],
+  阿联酋: ["ae", "uae"],
+  沙特阿拉伯: ["sa", "sau"],
+  卡塔尔: ["qa", "qat"],
+  以色列: ["il", "isr"],
+  土耳其: ["tr", "tur"],
+  英国: ["uk", "gb", "gbr"],
+  德国: ["de", "deu"],
+  法国: ["fr", "fra"],
+  意大利: ["it", "ita"],
+  西班牙: ["es", "esp"],
+  葡萄牙: ["pt", "prt"],
+  荷兰: ["nl", "nld"],
+  瑞士: ["ch", "che", "sui"],
+  瑞典: ["se", "swe"],
+  挪威: ["no", "nor"],
+  芬兰: ["fi", "fin"],
+  丹麦: ["dk", "dnk"],
+  比利时: ["be", "bel"],
+  奥地利: ["at", "aut"],
+  爱尔兰: ["ie", "irl"],
+  卢森堡: ["lu", "lux"],
+  波兰: ["pl", "pol"],
+  捷克: ["cz", "cze"],
+  匈牙利: ["hu", "hun"],
+  罗马尼亚: ["ro", "rou"],
+  希腊: ["gr", "grc"],
+  俄罗斯: ["ru", "rus"],
+  乌克兰: ["ua", "ukr"],
+  美国: ["us", "usa"],
+  加拿大: ["ca", "can"],
+  墨西哥: ["mx", "mex"],
+  巴西: ["br", "bra"],
+  阿根廷: ["ar", "arg"],
+  智利: ["cl", "chl"],
+  哥伦比亚: ["co", "col"],
+  秘鲁: ["pe", "per"],
+  澳大利亚: ["au", "aus"],
+  新西兰: ["nz", "nzl"],
+  南非: ["za", "zaf"],
+  埃及: ["eg", "egy"],
+  保加利亚: ["bg", "bgr"],
+};
+
 const LOCATION_RULES = buildLocationRules([
   // 中国港澳台与东亚
   {
@@ -409,6 +466,14 @@ const LOCATION_RULES = buildLocationRules([
     ],
   },
   {
+    zh: "保加利亚",
+    aliases: [
+      "bulgaria",
+      "sofia",
+      "bgr",
+    ],
+  },
+  {
     zh: "俄罗斯",
     aliases: [
       "russia",
@@ -644,6 +709,13 @@ function renameLocationInName(name) {
   let result = name;
 
   for (const rule of LOCATION_RULES) {
+    if (rule.codeAliasRe) {
+      const collapsed = result.replace(rule.codeAliasRe, (_, prefix) => `${prefix}${rule.zh}`);
+      if (collapsed !== result) {
+        result = collapseDuplicateLocation(collapsed, rule.zh);
+      }
+    }
+
     const next = result.replace(rule.re, (_, prefix) => `${prefix}${rule.zh}`);
     if (next === result) {
       continue;
@@ -671,6 +743,7 @@ function cleanupName(name) {
 function buildLocationRules(rules) {
   return rules.map((rule) => ({
     zh: rule.zh,
+    codeAliasRe: buildCodeAliasRegex(LOCATION_CODES[rule.zh], rule.aliases),
     re: buildLocationRegex(rule.aliases),
   }));
 }
@@ -681,6 +754,25 @@ function buildLocationRegex(aliases) {
     .sort((left, right) => right.length - left.length);
 
   return new RegExp(`(^|[^A-Za-z])(${sources.join("|")})(?=$|[^A-Za-z])`, "gi");
+}
+
+function buildCodeAliasRegex(codes, aliases) {
+  if (!Array.isArray(codes) || codes.length === 0) {
+    return null;
+  }
+
+  const codeSources = codes
+    .map(escapeRegex)
+    .sort((left, right) => right.length - left.length);
+
+  const aliasSources = aliases
+    .map(buildAliasPattern)
+    .sort((left, right) => right.length - left.length);
+
+  return new RegExp(
+    `(^|[^A-Za-z])(?:${codeSources.join("|")})${SEPARATOR_PATTERN}(?:${aliasSources.join("|")})(?=$|[^A-Za-z])`,
+    "gi"
+  );
 }
 
 function buildAliasPattern(alias) {
