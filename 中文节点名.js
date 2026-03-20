@@ -724,47 +724,20 @@ function renameLocationInName(name) {
     result = collapseDuplicateLocation(next, rule.zh);
   }
 
-  return cleanupName(collapseAllDuplicateLocations(result));
+  return cleanupName(result);
 }
 
 function collapseDuplicateLocation(name, location) {
-  const adjacentDuplicateRe = new RegExp(
+  const duplicateRe = new RegExp(
     `(${escapeRegex(location)})(?:[\\s._\\-/|()\\[\\]]*\\1)+`,
     "g"
   );
 
-  const collapsedName = name.replace(adjacentDuplicateRe, "$1");
-  const firstIndex = collapsedName.indexOf(location);
-
-  if (firstIndex < 0) {
-    return collapsedName;
-  }
-
-  const trailingStandaloneDuplicateRe = new RegExp(
-    `([\\s._\\-/|()\\[\\]]+)(${escapeRegex(location)})(?=$|[\\s._\\-/|()\\[\\]])`,
-    "g"
-  );
-
-  return collapsedName.replace(
-    trailingStandaloneDuplicateRe,
-    (match, prefix, matchedLocation, offset) => {
-      return offset > firstIndex ? "" : `${prefix}${matchedLocation}`;
-    }
-  );
+  return name.replace(duplicateRe, "$1");
 }
 
 function cleanupName(name) {
   return name.replace(/\s{2,}/g, " ").trim();
-}
-
-function collapseAllDuplicateLocations(name) {
-  let result = name;
-
-  for (const rule of LOCATION_RULES) {
-    result = collapseDuplicateLocation(result, rule.zh);
-  }
-
-  return result;
 }
 
 function buildLocationRules(rules) {
