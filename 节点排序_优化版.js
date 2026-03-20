@@ -41,55 +41,32 @@ const REGION_RULES = [
   {
     id: "hk",
     label: "香港",
-    re: combineRegex([
-      /香港/i,
-      /\bHong Kong\b/i,
-      /港(?!澳)/i,
-      createCodeTokenRegex(["HK", "HKG", "HKBN", "HKIX", "HGC", "WTT", "CMI"]),
-    ]),
+    // 对齐用户提供的 HK filter 语义
+    re: /^(?!.*(?:游戏|Game|game)).*?(?:香港|HK|Hong\s?Kong|(?<!深|珠|莞)港)/i,
   },
   {
     id: "tw",
     label: "台湾",
-    re: combineRegex([
-      /台湾/i,
-      /\bTaiwan\b/i,
-      /台(?!风)/i,
-      createCodeTokenRegex(["TW", "Hinet", "TWN", "CHT", "TFN"]),
-    ]),
+    // 对齐用户提供的 TW filter 语义
+    re: /^(?!.*(?:游戏|Game|game)).*?(?:台湾|Taiwan|TW|臺?灣|(?<![^ /\n])台(?![^ /\n]))/i,
   },
   {
     id: "jp",
     label: "日本",
-    re: combineRegex([
-      /日本/i,
-      /\bTokyo\b/i,
-      /\bOsaka\b/i,
-      /\bJapan\b/i,
-      /日(?!利亚)/i,
-      createCodeTokenRegex(["JP", "JPN", "NTT", "IIJ", "KDDI"]),
-    ]),
+    // 对齐用户提供的 JP filter 语义
+    re: /^(?!.*(?:游戏|Game|game)).*(?:日本|JP|Japan|东京|大阪|(?:川|泉|埼玉|深)?日(?!利亚))/i,
   },
   {
     id: "sg",
     label: "新加坡",
-    re: combineRegex([
-      /新加坡/i,
-      /\bSingapore\b/i,
-      /狮城/i,
-      /新(?!西兰)/i,
-      createCodeTokenRegex(["SG", "SGP", "SingTel", "M1", "StarHub"]),
-    ]),
+    // 对齐用户提供的 SG filter 语义
+    re: /^(?!.*(?:游戏|Game|game)).*?(?:新加坡|SG|新(?!西兰)|Singapore|狮城)/i,
   },
   {
     id: "us",
     label: "美国",
-    re: combineRegex([
-      /美国/i,
-      /\bUnited States\b/i,
-      /美(?!洲)/i,
-      createCodeTokenRegex(["US", "USA", "AWS", "GIA"]),
-    ]),
+    // 对齐用户提供的 US filter 语义；“洛杉矶郡”类名称不计入
+    re: /^(?!.*(?:游戏|Game|game)).*?(?:美(?:国|利坚|帝)?|US|USA|United\s?States|(?:波特兰|达拉斯|俄勒冈|凤凰城|硅谷|洛杉矶)(?!郡))/i,
   },
 ];
 
