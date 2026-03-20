@@ -1,13 +1,13 @@
 /**
  * 节点排序规则脚本（优化版）
  * 功能：按照统一排序键对节点进行排序
- * 版本：2.0.0
+ * 版本：2.1.0
  * 排序逻辑：
  * 1. 游戏/加速节点最高优先级
  * 2. 其他特殊类型优先级
- * 3. 显式倍率优先，倍率越低越靠前
- * 4. 低倍率标签 / 实验性标签
- * 5. 地区优先级（仅港、台、日、新、美）
+ * 3. 低倍率节点次优先
+ * 4. 地区优先级（仅港、台、日、新、美）
+ * 5. 通用倍率排序（同地区内：无倍率 -> 普通倍率，倍率越低越靠前）
  * 6. 名称自然排序（中英文混排，数字按数值比较）
  */
 
@@ -114,7 +114,7 @@ function operator(proxies = [], targetPlatform) {
 
 function buildSortMeta(proxy, index) {
   const name = normalizeName(proxy);
-  const multiplier = name ? getMultiplierSortKey(name) : { rank: 3, value: Infinity };
+  const multiplier = name ? getMultiplierMeta(name) : getDefaultMultiplierMeta();
 
   return {
     proxy,
@@ -123,8 +123,10 @@ function buildSortMeta(proxy, index) {
     name,
     gameRank: name && GAME_RULE.test(name) ? 0 : 1,
     specialRank: name ? getFirstMatchIndex(SPECIAL_RULES, name) : SPECIAL_RULES.length,
-    multiplierRank: multiplier.rank,
-    multiplierValue: multiplier.value,
+    lowMultiplierRank: multiplier.lowRank,
+    lowMultiplierValue: multiplier.lowValue,
+    genericMultiplierRank: multiplier.genericRank,
+    genericMultiplierValue: multiplier.genericValue,
     regionRank: name ? getFirstMatchIndex(REGION_RULES, name) : REGION_RULES.length,
   };
 }
@@ -134,9 +136,11 @@ function compareEntries(a, b) {
     compareNumber(a.hasName, b.hasName) ||
     compareNumber(a.gameRank, b.gameRank) ||
     compareNumber(a.specialRank, b.specialRank) ||
-    compareNumber(a.multiplierRank, b.multiplierRank) ||
-    compareNumber(a.multiplierValue, b.multiplierValue) ||
+    compareNumber(a.lowMultiplierRank, b.lowMultiplierRank) ||
     compareNumber(a.regionRank, b.regionRank) ||
+    compareNumber(a.lowMultiplierValue, b.lowMultiplierValue) ||
+    compareNumber(a.genericMultiplierRank, b.genericMultiplierRank) ||
+    compareNumber(a.genericMultiplierValue, b.genericMultiplierValue) ||
     compareName(a.name, b.name) ||
     compareNumber(a.index, b.index)
   );
@@ -156,21 +160,54 @@ function normalizeName(proxy) {
   return name.replace(/\s+/g, " ").trim();
 }
 
-function getMultiplierSortKey(name) {
+function getMultiplierMeta(name) {
   const numericMultiplier = extractMultiplier(name);
-  if (numericMultiplier !== null) {
-    return { rank: 0, value: numericMultiplier };
+  if (numericMultiplier !== null && numericMultiplier < 1) {
+    return {
+      lowRank: 0,
+      lowValue: numericMultiplier,
+      genericRank: 1,
+      genericValue: numericMultiplier,
+    };
   }
 
   if (LOW_MULTIPLIER_TAG_RE.test(name)) {
-    return { rank: 1, value: Infinity };
+    return {
+      lowRank: 1,
+      lowValue: Infinity,
+      genericRank: 1,
+      genericValue: Infinity,
+    };
   }
 
   if (EXPERIMENTAL_TAG_RE.test(name)) {
-    return { rank: 2, value: Infinity };
+    return {
+      lowRank: 2,
+      lowValue: Infinity,
+      genericRank: 1,
+      genericValue: Infinity,
+    };
   }
 
-  return { rank: 3, value: Infinity };
+  if (numericMultiplier !== null) {
+    return {
+      lowRank: 3,
+      lowValue: Infinity,
+      genericRank: 1,
+      genericValue: numericMultiplier,
+    };
+  }
+
+  return getDefaultMultiplierMeta();
+}
+
+function getDefaultMultiplierMeta() {
+  return {
+    lowRank: 3,
+    lowValue: Infinity,
+    genericRank: 0,
+    genericValue: Infinity,
+  };
 }
 
 function extractMultiplier(name) {
