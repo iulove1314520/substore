@@ -54,7 +54,7 @@ const REGION_RULES = [
     id: "jp",
     label: "日本",
     // 对齐用户提供的 JP filter 语义
-    re: /^(?!.*(?:游戏|Game|game)).*(?:日本|JP|Japan|东京|大阪|(?:川|泉|埼玉|深)?日(?!利亚))/i,
+    re: /^(?!.*(?:游戏|Game|game)).*(?:日本|JP|Japan|东京|大阪|(?:川|泉|埼玉|深)?日(?=[\s丨|_/\-\d]|$))/i,
   },
   {
     id: "sg",
