@@ -3,9 +3,9 @@
  * 功能：按照统一排序键对节点进行排序
  * 版本：2.0.0
  * 排序逻辑：
- * 1. 显式倍率优先，倍率越低越靠前
- * 2. 低倍率标签 / 实验性标签
- * 3. 特殊类型优先级
+ * 1. 特殊类型优先级
+ * 2. 显式倍率优先，倍率越低越靠前
+ * 3. 低倍率标签 / 实验性标签
  * 4. 地区优先级（仅港、台、日、新、美）
  * 5. 名称自然排序（中英文混排，数字按数值比较）
  */
@@ -129,9 +129,9 @@ function buildSortMeta(proxy, index) {
 function compareEntries(a, b) {
   return (
     compareNumber(a.hasName, b.hasName) ||
+    compareNumber(a.specialRank, b.specialRank) ||
     compareNumber(a.multiplierRank, b.multiplierRank) ||
     compareNumber(a.multiplierValue, b.multiplierValue) ||
-    compareNumber(a.specialRank, b.specialRank) ||
     compareNumber(a.regionRank, b.regionRank) ||
     compareName(a.name, b.name) ||
     compareNumber(a.index, b.index)
