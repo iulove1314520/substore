@@ -3,11 +3,12 @@
  * 功能：按照统一排序键对节点进行排序
  * 版本：2.0.0
  * 排序逻辑：
- * 1. 特殊类型优先级
- * 2. 显式倍率优先，倍率越低越靠前
- * 3. 低倍率标签 / 实验性标签
- * 4. 地区优先级（仅港、台、日、新、美）
- * 5. 名称自然排序（中英文混排，数字按数值比较）
+ * 1. 游戏/加速节点最高优先级
+ * 2. 其他特殊类型优先级
+ * 3. 显式倍率优先，倍率越低越靠前
+ * 4. 低倍率标签 / 实验性标签
+ * 5. 地区优先级（仅港、台、日、新、美）
+ * 6. 名称自然排序（中英文混排，数字按数值比较）
  */
 
 const NAME_COLLATOR =
@@ -18,6 +19,8 @@ const NAME_COLLATOR =
       })
     : null;
 
+const GAME_RULE = /Game|游戏|加速/i;
+
 const SPECIAL_RULES = [
   { id: "promo", label: "活动/优惠", re: /活动|优惠|限时/i },
   { id: "direct", label: "直连/直通", re: /直连|直通/i },
@@ -25,7 +28,6 @@ const SPECIAL_RULES = [
   { id: "package", label: "套餐", re: /套餐/i },
   { id: "traffic", label: "流量", re: /流量/i },
   { id: "reset", label: "重置", re: /重置/i },
-  { id: "game", label: "游戏/加速", re: /Game|游戏|加速/i },
 ];
 
 const LOW_MULTIPLIER_TAG_RE = combineRegex([
@@ -119,6 +121,7 @@ function buildSortMeta(proxy, index) {
     index,
     hasName: name ? 0 : 1,
     name,
+    gameRank: name && GAME_RULE.test(name) ? 0 : 1,
     specialRank: name ? getFirstMatchIndex(SPECIAL_RULES, name) : SPECIAL_RULES.length,
     multiplierRank: multiplier.rank,
     multiplierValue: multiplier.value,
@@ -129,6 +132,7 @@ function buildSortMeta(proxy, index) {
 function compareEntries(a, b) {
   return (
     compareNumber(a.hasName, b.hasName) ||
+    compareNumber(a.gameRank, b.gameRank) ||
     compareNumber(a.specialRank, b.specialRank) ||
     compareNumber(a.multiplierRank, b.multiplierRank) ||
     compareNumber(a.multiplierValue, b.multiplierValue) ||
