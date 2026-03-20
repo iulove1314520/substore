@@ -11,10 +11,12 @@
 const SEPARATOR_PATTERN = String.raw`(?:[\s._\-/]*)`;
 
 const LOCATION_RULES = buildLocationRules([
+  // 中国港澳台与东亚
   {
     zh: "香港",
     aliases: [
       ["hong", "kong"],
+      "kowloon",
       "hk",
       "hkg",
     ],
@@ -32,25 +34,64 @@ const LOCATION_RULES = buildLocationRules([
       "taiwan",
       ["tai", "wan"],
       ["tai", "pei"],
-      "taipei",
       ["kaoh", "siung"],
-      "kaohsiung",
       ["tai", "chung"],
+      "taipei",
+      "kaohsiung",
       "taichung",
+      "hsinchu",
       "tw",
       "twn",
+    ],
+  },
+  {
+    zh: "中国",
+    aliases: [
+      "china",
+      ["main", "land"],
+      "mainland",
+      "beijing",
+      "shanghai",
+      "guangzhou",
+      "shenzhen",
+      "hangzhou",
+      "chengdu",
+      "nanjing",
+      "wuhan",
+      "xiamen",
+      "chn",
     ],
   },
   {
     zh: "日本",
     aliases: [
       "japan",
-      ["tokyo"],
-      ["osaka"],
+      "tokyo",
+      "osaka",
+      "yokohama",
+      "nagoya",
+      "kyoto",
+      "fukuoka",
+      "sapporo",
       "jp",
       "jpn",
     ],
   },
+  {
+    zh: "韩国",
+    aliases: [
+      ["south", "korea"],
+      "southkorea",
+      "korea",
+      "seoul",
+      "busan",
+      "incheon",
+      "kr",
+      "kor",
+    ],
+  },
+
+  // 东南亚、南亚与中东
   {
     zh: "新加坡",
     aliases: [
@@ -61,35 +102,117 @@ const LOCATION_RULES = buildLocationRules([
     ],
   },
   {
-    zh: "美国",
+    zh: "马来西亚",
     aliases: [
-      ["united", "states"],
-      ["united", "states", "of", "america"],
-      "america",
-      "usa",
-      "us",
-      ["los", "angeles"],
-      "losangeles",
-      ["san", "jose"],
-      "sanjose",
-      ["new", "york"],
-      "newyork",
-      ["seattle"],
-      ["silicon", "valley"],
-      "siliconvalley",
+      "malaysia",
+      ["kuala", "lumpur"],
+      "kualalumpur",
+      "penang",
+      "johor",
+      "mys",
     ],
   },
   {
-    zh: "韩国",
+    zh: "泰国",
     aliases: [
-      ["south", "korea"],
-      "southkorea",
-      "korea",
-      "seoul",
-      "kr",
-      "kor",
+      "thailand",
+      "bangkok",
+      "thai",
+      "tha",
     ],
   },
+  {
+    zh: "菲律宾",
+    aliases: [
+      "philippines",
+      "manila",
+      "phl",
+    ],
+  },
+  {
+    zh: "越南",
+    aliases: [
+      "vietnam",
+      ["ho", "chi", "minh"],
+      "hochiminh",
+      "saigon",
+      "hanoi",
+      "vnm",
+    ],
+  },
+  {
+    zh: "印度",
+    aliases: [
+      "india",
+      "mumbai",
+      "delhi",
+      "bangalore",
+      "bengaluru",
+      "hyderabad",
+      "chennai",
+      "kolkata",
+      "ind",
+    ],
+  },
+  {
+    zh: "印度尼西亚",
+    aliases: [
+      "indonesia",
+      "jakarta",
+      "surabaya",
+      "idn",
+    ],
+  },
+  {
+    zh: "阿联酋",
+    aliases: [
+      ["united", "arab", "emirates"],
+      "unitedarabemirates",
+      "uae",
+      "dubai",
+      ["abu", "dhabi"],
+      "abudhabi",
+    ],
+  },
+  {
+    zh: "沙特阿拉伯",
+    aliases: [
+      ["saudi", "arabia"],
+      "saudiarabia",
+      "riyadh",
+      "jeddah",
+      "sau",
+    ],
+  },
+  {
+    zh: "卡塔尔",
+    aliases: [
+      "qatar",
+      "doha",
+      "qat",
+    ],
+  },
+  {
+    zh: "以色列",
+    aliases: [
+      "israel",
+      ["tel", "aviv"],
+      "telaviv",
+      "jerusalem",
+      "isr",
+    ],
+  },
+  {
+    zh: "土耳其",
+    aliases: [
+      "turkey",
+      "istanbul",
+      "ankara",
+      "tur",
+    ],
+  },
+
+  // 欧洲
   {
     zh: "英国",
     aliases: [
@@ -99,6 +222,7 @@ const LOCATION_RULES = buildLocationRules([
       "england",
       "london",
       "manchester",
+      "birmingham",
       "uk",
       "gb",
       "gbr",
@@ -110,6 +234,9 @@ const LOCATION_RULES = buildLocationRules([
       "germany",
       "frankfurt",
       "berlin",
+      "munich",
+      "dusseldorf",
+      "hamburg",
       "de",
       "deu",
     ],
@@ -120,7 +247,215 @@ const LOCATION_RULES = buildLocationRules([
       "france",
       "paris",
       "marseille",
+      "lyon",
       "fr",
+    ],
+  },
+  {
+    zh: "意大利",
+    aliases: [
+      "italy",
+      "rome",
+      "milan",
+      "naples",
+      "ita",
+    ],
+  },
+  {
+    zh: "西班牙",
+    aliases: [
+      "spain",
+      "madrid",
+      "barcelona",
+      "valencia",
+      "esp",
+    ],
+  },
+  {
+    zh: "葡萄牙",
+    aliases: [
+      "portugal",
+      "lisbon",
+      "porto",
+      "prt",
+    ],
+  },
+  {
+    zh: "荷兰",
+    aliases: [
+      "netherlands",
+      "holland",
+      "amsterdam",
+      "rotterdam",
+      "nld",
+    ],
+  },
+  {
+    zh: "瑞士",
+    aliases: [
+      "switzerland",
+      "zurich",
+      "geneva",
+      "sui",
+      "che",
+    ],
+  },
+  {
+    zh: "瑞典",
+    aliases: [
+      "sweden",
+      "stockholm",
+      "gothenburg",
+      "swe",
+    ],
+  },
+  {
+    zh: "挪威",
+    aliases: [
+      "norway",
+      "oslo",
+      "bergen",
+      "nor",
+    ],
+  },
+  {
+    zh: "芬兰",
+    aliases: [
+      "finland",
+      "helsinki",
+      "fin",
+    ],
+  },
+  {
+    zh: "丹麦",
+    aliases: [
+      "denmark",
+      "copenhagen",
+      "dnk",
+    ],
+  },
+  {
+    zh: "比利时",
+    aliases: [
+      "belgium",
+      "brussels",
+      "bel",
+    ],
+  },
+  {
+    zh: "奥地利",
+    aliases: [
+      "austria",
+      "vienna",
+      "aut",
+    ],
+  },
+  {
+    zh: "爱尔兰",
+    aliases: [
+      "ireland",
+      "dublin",
+      "irl",
+    ],
+  },
+  {
+    zh: "卢森堡",
+    aliases: [
+      "luxembourg",
+      "luxemburg",
+      "lux",
+    ],
+  },
+  {
+    zh: "波兰",
+    aliases: [
+      "poland",
+      "warsaw",
+      "pol",
+    ],
+  },
+  {
+    zh: "捷克",
+    aliases: [
+      ["czech", "republic"],
+      "czechrepublic",
+      "czech",
+      "prague",
+      "cze",
+    ],
+  },
+  {
+    zh: "匈牙利",
+    aliases: [
+      "hungary",
+      "budapest",
+      "hun",
+    ],
+  },
+  {
+    zh: "罗马尼亚",
+    aliases: [
+      "romania",
+      "bucharest",
+      "rou",
+    ],
+  },
+  {
+    zh: "希腊",
+    aliases: [
+      "greece",
+      "athens",
+      "grc",
+    ],
+  },
+  {
+    zh: "俄罗斯",
+    aliases: [
+      "russia",
+      "moscow",
+      ["saint", "petersburg"],
+      ["st", "petersburg"],
+      "saintpetersburg",
+      "stpetersburg",
+      "rus",
+    ],
+  },
+  {
+    zh: "乌克兰",
+    aliases: [
+      "ukraine",
+      "kyiv",
+      "kiev",
+      "ukr",
+    ],
+  },
+
+  // 北美与南美
+  {
+    zh: "美国",
+    aliases: [
+      ["united", "states"],
+      ["united", "states", "of", "america"],
+      "america",
+      "usa",
+      "us",
+      ["los", "angeles"],
+      ["san", "jose"],
+      ["new", "york"],
+      ["las", "vegas"],
+      ["silicon", "valley"],
+      "losangeles",
+      "sanjose",
+      "newyork",
+      "lasvegas",
+      "siliconvalley",
+      "seattle",
+      "chicago",
+      "dallas",
+      "miami",
+      "phoenix",
+      "atlanta",
+      "ashburn",
     ],
   },
   {
@@ -130,9 +465,67 @@ const LOCATION_RULES = buildLocationRules([
       "toronto",
       "vancouver",
       "montreal",
+      "ottawa",
+      "calgary",
       "can",
     ],
   },
+  {
+    zh: "墨西哥",
+    aliases: [
+      "mexico",
+      ["mexico", "city"],
+      "mexicocity",
+      "guadalajara",
+      "mex",
+    ],
+  },
+  {
+    zh: "巴西",
+    aliases: [
+      "brazil",
+      ["sao", "paulo"],
+      ["rio", "de", "janeiro"],
+      "saopaulo",
+      "riodejaneiro",
+      "bra",
+    ],
+  },
+  {
+    zh: "阿根廷",
+    aliases: [
+      "argentina",
+      ["buenos", "aires"],
+      "buenosaires",
+      "arg",
+    ],
+  },
+  {
+    zh: "智利",
+    aliases: [
+      "chile",
+      "santiago",
+      "chl",
+    ],
+  },
+  {
+    zh: "哥伦比亚",
+    aliases: [
+      "colombia",
+      "bogota",
+      "col",
+    ],
+  },
+  {
+    zh: "秘鲁",
+    aliases: [
+      "peru",
+      "lima",
+      "per",
+    ],
+  },
+
+  // 大洋洲与非洲
   {
     zh: "澳大利亚",
     aliases: [
@@ -140,6 +533,7 @@ const LOCATION_RULES = buildLocationRules([
       "sydney",
       "melbourne",
       "brisbane",
+      "perth",
       "au",
       "aus",
     ],
@@ -150,70 +544,71 @@ const LOCATION_RULES = buildLocationRules([
       ["new", "zealand"],
       "newzealand",
       "auckland",
+      "wellington",
+      "christchurch",
       "nz",
       "nzl",
     ],
   },
   {
-    zh: "马来西亚",
+    zh: "南非",
     aliases: [
-      "malaysia",
-      ["kuala", "lumpur"],
-      "kualalumpur",
-      "mys",
+      ["south", "africa"],
+      "southafrica",
+      "johannesburg",
+      ["cape", "town"],
+      "capetown",
+      "zaf",
     ],
   },
   {
-    zh: "泰国",
+    zh: "埃及",
     aliases: [
-      "thailand",
-      "bangkok",
+      "egypt",
+      "cairo",
+      "egy",
+    ],
+  },
+
+  // 区域标签
+  {
+    zh: "欧洲",
+    aliases: [
+      "europe",
+      "european",
     ],
   },
   {
-    zh: "菲律宾",
+    zh: "亚洲",
     aliases: [
-      "philippines",
-      "manila",
+      "asia",
+      ["asia", "pacific"],
+      "asiapacific",
+      "apac",
     ],
   },
   {
-    zh: "印度",
+    zh: "中东",
     aliases: [
-      "india",
-      "mumbai",
-      "delhi",
+      ["middle", "east"],
+      "middleeast",
     ],
   },
   {
-    zh: "印度尼西亚",
+    zh: "北美",
     aliases: [
-      "indonesia",
-      "jakarta",
+      ["north", "america"],
+      "northamerica",
     ],
   },
   {
-    zh: "越南",
+    zh: "南美",
     aliases: [
-      "vietnam",
-      ["ho", "chi", "minh"],
-      "hochiminh",
-      "hanoi",
-    ],
-  },
-  {
-    zh: "荷兰",
-    aliases: [
-      "netherlands",
-      "holland",
-      "amsterdam",
-    ],
-  },
-  {
-    zh: "土耳其",
-    aliases: [
-      "turkey",
-      "istanbul",
+      ["south", "america"],
+      "southamerica",
+      ["latin", "america"],
+      "latinamerica",
+      "latam",
     ],
   },
 ]);
