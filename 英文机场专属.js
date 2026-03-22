@@ -6,42 +6,42 @@
  * 3. 归一前置旗帜，修正台湾等错误旗帜
  */
 
-const LEADING_FLAG_RE = /^((?:[\uD83C][\uDDE6-\uDDFF][\uD83C][\uDDE6-\uDDFF]))(\s*)/;
+var FALLBACK_FLAG_RE = /^(?:[\uD83C][\uDDE6-\uDDFF][\uD83C][\uDDE6-\uDDFF])\s*/;
 
-const PHRASE_REPLACEMENTS = [
-  [/\bUnited\s+Arab\s+Emirates\b/gi, "阿联酋"],
-  [/\bUnited\s+Kingdom\b/gi, "英国"],
-  [/\bHong\s+Kong\b/gi, "香港"],
-  [/\bTaiwan\b/gi, "台湾"],
-  [/\bJapan\b/gi, "日本"],
-  [/\bSingapore\b/gi, "新加坡"],
-  [/\bAustralia\s+Sydney\b/gi, "澳大利亚 悉尼"],
-  [/\bAustria\b/gi, "奥地利"],
-  [/\bRussia\s+St\.?\s+Petersburg\b/gi, "俄罗斯 圣彼得堡"],
-  [/\bRussia\s+Moscow\b/gi, "俄罗斯 莫斯科"],
-  [/\bUSA\s+Los\s+Angeles\b/gi, "美国 洛杉矶"],
-  [/\bUSA\s+San\s+Jose\b/gi, "美国 圣何塞"],
-  [/\bUSA\s+Seattle\b/gi, "美国 西雅图"],
-  [/\bUSA\b/gi, "美国"],
-  [/\bArgentina\b/gi, "阿根廷"],
-  [/\bBrazil\b/gi, "巴西"],
-  [/\bBulgaria\b/gi, "保加利亚"],
-  [/\bCanada\b/gi, "加拿大"],
-  [/\bChile\b/gi, "智利"],
-  [/\bFrance\b/gi, "法国"],
-  [/\bGermany\b/gi, "德国"],
-  [/\bHungary\b/gi, "匈牙利"],
-  [/\bIndia\b/gi, "印度"],
-  [/\bIndonesia\b/gi, "印度尼西亚"],
-  [/\bIreland\b/gi, "爱尔兰"],
-  [/\bKorea\b/gi, "韩国"],
-  [/\bNetherlands\b/gi, "荷兰"],
-  [/\bSweden\b/gi, "瑞典"],
-  [/\bSwitzerland\b/gi, "瑞士"],
-  [/\bTurkey\b/gi, "土耳其"],
+var PHRASE_REPLACEMENTS = [
+  { re: /\bUnited\s+Arab\s+Emirates\b/gi, zh: "阿联酋" },
+  { re: /\bUnited\s+Kingdom\b/gi, zh: "英国" },
+  { re: /\bHong\s+Kong\b/gi, zh: "香港" },
+  { re: /\bTaiwan\b/gi, zh: "台湾" },
+  { re: /\bJapan\b/gi, zh: "日本" },
+  { re: /\bSingapore\b/gi, zh: "新加坡" },
+  { re: /\bAustralia\s+Sydney\b/gi, zh: "澳大利亚 悉尼" },
+  { re: /\bAustria\b/gi, zh: "奥地利" },
+  { re: /\bRussia\s+St\.?\s+Petersburg\b/gi, zh: "俄罗斯 圣彼得堡" },
+  { re: /\bRussia\s+Moscow\b/gi, zh: "俄罗斯 莫斯科" },
+  { re: /\bUSA\s+Los\s+Angeles\b/gi, zh: "美国 洛杉矶" },
+  { re: /\bUSA\s+San\s+Jose\b/gi, zh: "美国 圣何塞" },
+  { re: /\bUSA\s+Seattle\b/gi, zh: "美国 西雅图" },
+  { re: /\bUSA\b/gi, zh: "美国" },
+  { re: /\bArgentina\b/gi, zh: "阿根廷" },
+  { re: /\bBrazil\b/gi, zh: "巴西" },
+  { re: /\bBulgaria\b/gi, zh: "保加利亚" },
+  { re: /\bCanada\b/gi, zh: "加拿大" },
+  { re: /\bChile\b/gi, zh: "智利" },
+  { re: /\bFrance\b/gi, zh: "法国" },
+  { re: /\bGermany\b/gi, zh: "德国" },
+  { re: /\bHungary\b/gi, zh: "匈牙利" },
+  { re: /\bIndia\b/gi, zh: "印度" },
+  { re: /\bIndonesia\b/gi, zh: "印度尼西亚" },
+  { re: /\bIreland\b/gi, zh: "爱尔兰" },
+  { re: /\bKorea\b/gi, zh: "韩国" },
+  { re: /\bNetherlands\b/gi, zh: "荷兰" },
+  { re: /\bSweden\b/gi, zh: "瑞典" },
+  { re: /\bSwitzerland\b/gi, zh: "瑞士" },
+  { re: /\bTurkey\b/gi, zh: "土耳其" }
 ];
 
-const LOCATION_FLAGS = [
+var LOCATION_FLAGS = [
   { zh: "香港", flag: "🇭🇰" },
   { zh: "台湾", flag: "🇹🇼" },
   { zh: "日本", flag: "🇯🇵" },
@@ -67,10 +67,10 @@ const LOCATION_FLAGS = [
   { zh: "瑞士", flag: "🇨🇭" },
   { zh: "土耳其", flag: "🇹🇷" },
   { zh: "阿联酋", flag: "🇦🇪" },
-  { zh: "英国", flag: "🇬🇧" },
+  { zh: "英国", flag: "🇬🇧" }
 ];
 
-function operator(proxies = [], targetPlatform, context) {
+function operator(proxies, targetPlatform, context) {
   void targetPlatform;
   void context;
 
@@ -78,30 +78,24 @@ function operator(proxies = [], targetPlatform, context) {
     return [];
   }
 
-  return proxies.map((proxy) => renameProxy(proxy));
-}
+  for (var i = 0; i < proxies.length; i += 1) {
+    var proxy = proxies[i];
+    if (!proxy || typeof proxy.name !== "string") {
+      continue;
+    }
 
-function renameProxy(proxy) {
-  if (!proxy || typeof proxy.name !== "string") {
-    return proxy;
+    proxy.name = renameProxyName(proxy.name);
   }
 
-  const renamedName = renameProxyName(proxy.name);
-  if (renamedName === proxy.name) {
-    return proxy;
-  }
-
-  return {
-    ...proxy,
-    name: renamedName,
-  };
+  return proxies;
 }
 
 function renameProxyName(name) {
-  let result = normalizeSpacing(name);
+  var result = normalizeSpacing(name);
+  var i;
 
-  for (const [pattern, replacement] of PHRASE_REPLACEMENTS) {
-    result = result.replace(pattern, replacement);
+  for (i = 0; i < PHRASE_REPLACEMENTS.length; i += 1) {
+    result = result.replace(PHRASE_REPLACEMENTS[i].re, PHRASE_REPLACEMENTS[i].zh);
   }
 
   result = normalizeSpacing(result);
@@ -110,29 +104,45 @@ function renameProxyName(name) {
 }
 
 function normalizeSpacing(name) {
-  return name.replace(/\s+/g, " ").trim();
+  return String(name).replace(/\s+/g, " ").trim();
 }
 
 function normalizeLeadingFlag(name) {
-  const canonicalFlag = detectCanonicalFlag(name);
+  var canonicalFlag = detectCanonicalFlag(name);
+  var body;
+
   if (!canonicalFlag) {
     return name;
   }
 
-  const match = name.match(LEADING_FLAG_RE);
-  if (!match) {
-    return `${canonicalFlag} ${name}`;
+  body = removeLeadingFlag(name);
+  return canonicalFlag + " " + body;
+}
+
+function removeLeadingFlag(name) {
+  var body = String(name);
+
+  if (
+    typeof ProxyUtils !== "undefined" &&
+    ProxyUtils &&
+    typeof ProxyUtils.removeFlag === "function"
+  ) {
+    body = ProxyUtils.removeFlag(body);
+  } else {
+    body = body.replace(FALLBACK_FLAG_RE, "");
   }
 
-  return `${canonicalFlag}${match[2]}${name.slice(match[0].length)}`;
+  return normalizeSpacing(body);
 }
 
 function detectCanonicalFlag(name) {
-  for (const item of LOCATION_FLAGS) {
-    if (name.includes(item.zh)) {
-      return item.flag;
+  var i;
+
+  for (i = 0; i < LOCATION_FLAGS.length; i += 1) {
+    if (String(name).indexOf(LOCATION_FLAGS[i].zh) !== -1) {
+      return LOCATION_FLAGS[i].flag;
     }
   }
 
-  return null;
+  return "";
 }
