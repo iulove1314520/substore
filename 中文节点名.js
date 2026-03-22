@@ -9,6 +9,65 @@
  */
 
 const SEPARATOR_PATTERN = String.raw`(?:[\s._\-/]*)`;
+const LEADING_FLAG_RE = /^((?:[\uD83C][\uDDE6-\uDDFF][\uD83C][\uDDE6-\uDDFF]))(\s*)/;
+
+const LOCATION_FLAGS = {
+  香港: "🇭🇰",
+  澳门: "🇲🇴",
+  台湾: "🇹🇼",
+  中国: "🇨🇳",
+  日本: "🇯🇵",
+  韩国: "🇰🇷",
+  新加坡: "🇸🇬",
+  马来西亚: "🇲🇾",
+  泰国: "🇹🇭",
+  菲律宾: "🇵🇭",
+  越南: "🇻🇳",
+  印度: "🇮🇳",
+  印度尼西亚: "🇮🇩",
+  阿联酋: "🇦🇪",
+  沙特阿拉伯: "🇸🇦",
+  卡塔尔: "🇶🇦",
+  以色列: "🇮🇱",
+  土耳其: "🇹🇷",
+  英国: "🇬🇧",
+  德国: "🇩🇪",
+  法国: "🇫🇷",
+  意大利: "🇮🇹",
+  西班牙: "🇪🇸",
+  葡萄牙: "🇵🇹",
+  荷兰: "🇳🇱",
+  瑞士: "🇨🇭",
+  瑞典: "🇸🇪",
+  冰岛: "🇮🇸",
+  挪威: "🇳🇴",
+  芬兰: "🇫🇮",
+  丹麦: "🇩🇰",
+  比利时: "🇧🇪",
+  奥地利: "🇦🇹",
+  爱尔兰: "🇮🇪",
+  卢森堡: "🇱🇺",
+  波兰: "🇵🇱",
+  捷克: "🇨🇿",
+  匈牙利: "🇭🇺",
+  罗马尼亚: "🇷🇴",
+  希腊: "🇬🇷",
+  俄罗斯: "🇷🇺",
+  乌克兰: "🇺🇦",
+  美国: "🇺🇸",
+  加拿大: "🇨🇦",
+  墨西哥: "🇲🇽",
+  巴西: "🇧🇷",
+  阿根廷: "🇦🇷",
+  智利: "🇨🇱",
+  哥伦比亚: "🇨🇴",
+  秘鲁: "🇵🇪",
+  澳大利亚: "🇦🇺",
+  新西兰: "🇳🇿",
+  南非: "🇿🇦",
+  埃及: "🇪🇬",
+  保加利亚: "🇧🇬",
+};
 
 const LOCATION_CODES = {
   香港: ["hk", "hkg"],
@@ -715,7 +774,7 @@ function renameProxy(proxy) {
 }
 
 function renameLocationInName(name) {
-  let result = name;
+  let result = replaceStandaloneShortCode(name);
 
   for (const rule of LOCATION_RULES) {
     if (rule.standaloneCodeRe) {
@@ -740,7 +799,7 @@ function renameLocationInName(name) {
     result = collapseDuplicateLocation(next, rule.zh);
   }
 
-  return cleanupName(result);
+  return normalizeLeadingFlag(cleanupName(result));
 }
 
 function collapseDuplicateLocation(name, location) {
@@ -759,10 +818,42 @@ function cleanupName(name) {
 function buildLocationRules(rules) {
   return rules.map((rule) => ({
     zh: rule.zh,
+    shortCodes: (LOCATION_CODES[rule.zh] || []).filter((code) => code.length === 2),
     standaloneCodeRe: buildStandaloneCodeRegex(LOCATION_CODES[rule.zh]),
     codeAliasRe: buildCodeAliasRegex(LOCATION_CODES[rule.zh], rule.aliases),
     re: buildLocationRegex(rule.aliases),
   }));
+}
+
+function replaceStandaloneShortCode(name) {
+  const flagMatch = name.match(LEADING_FLAG_RE);
+  const prefix = flagMatch ? `${flagMatch[1]}${flagMatch[2]}` : "";
+  const body = flagMatch ? name.slice(flagMatch[0].length) : name;
+  const trimmedBody = body.trimStart();
+  const leadingWhitespace = body.slice(0, body.length - trimmedBody.length);
+
+  for (const rule of LOCATION_RULES) {
+    if (!Array.isArray(rule.shortCodes) || rule.shortCodes.length === 0) {
+      continue;
+    }
+
+    for (const code of rule.shortCodes) {
+      const codeRe = new RegExp(`^${escapeRegex(code)}(?=$|[^A-Za-z])`, "i");
+      const match = trimmedBody.match(codeRe);
+      if (!match) {
+        continue;
+      }
+
+      const rest = trimmedBody.slice(match[0].length);
+      if (/[A-Za-z]/.test(rest)) {
+        continue;
+      }
+
+      return `${prefix}${leadingWhitespace}${trimmedBody.replace(codeRe, rule.zh)}`;
+    }
+  }
+
+  return name;
 }
 
 function buildLocationRegex(aliases) {
@@ -807,6 +898,30 @@ function buildStandaloneCodeRegex(codes) {
   }
 
   return new RegExp(`(^|[^A-Za-z])(?:${codeSources.join("|")})(?=$|[^A-Za-z])`, "gi");
+}
+
+function normalizeLeadingFlag(name) {
+  const flagMatch = name.match(LEADING_FLAG_RE);
+  if (!flagMatch) {
+    return name;
+  }
+
+  const canonicalFlag = findCanonicalFlag(name);
+  if (!canonicalFlag) {
+    return name;
+  }
+
+  return `${canonicalFlag}${flagMatch[2]}${name.slice(flagMatch[0].length)}`;
+}
+
+function findCanonicalFlag(name) {
+  for (const rule of LOCATION_RULES) {
+    if (name.includes(rule.zh) && LOCATION_FLAGS[rule.zh]) {
+      return LOCATION_FLAGS[rule.zh];
+    }
+  }
+
+  return null;
 }
 
 function buildAliasPattern(alias) {
