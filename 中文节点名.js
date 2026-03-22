@@ -38,6 +38,7 @@ const LOCATION_CODES = {
   荷兰: ["nl", "nld"],
   瑞士: ["ch", "che", "sui"],
   瑞典: ["se", "swe"],
+  冰岛: ["is", "isl"],
   挪威: ["no", "nor"],
   芬兰: ["fi", "fin"],
   丹麦: ["dk", "dnk"],
@@ -364,6 +365,14 @@ const LOCATION_RULES = buildLocationRules([
       "stockholm",
       "gothenburg",
       "swe",
+    ],
+  },
+  {
+    zh: "冰岛",
+    aliases: [
+      "iceland",
+      "reykjavik",
+      "isl",
     ],
   },
   {
@@ -709,6 +718,13 @@ function renameLocationInName(name) {
   let result = name;
 
   for (const rule of LOCATION_RULES) {
+    if (rule.standaloneCodeRe) {
+      const collapsed = result.replace(rule.standaloneCodeRe, (_, prefix) => `${prefix}${rule.zh}`);
+      if (collapsed !== result) {
+        result = collapseDuplicateLocation(collapsed, rule.zh);
+      }
+    }
+
     if (rule.codeAliasRe) {
       const collapsed = result.replace(rule.codeAliasRe, (_, prefix) => `${prefix}${rule.zh}`);
       if (collapsed !== result) {
@@ -743,6 +759,7 @@ function cleanupName(name) {
 function buildLocationRules(rules) {
   return rules.map((rule) => ({
     zh: rule.zh,
+    standaloneCodeRe: buildStandaloneCodeRegex(LOCATION_CODES[rule.zh]),
     codeAliasRe: buildCodeAliasRegex(LOCATION_CODES[rule.zh], rule.aliases),
     re: buildLocationRegex(rule.aliases),
   }));
@@ -773,6 +790,23 @@ function buildCodeAliasRegex(codes, aliases) {
     `(^|[^A-Za-z])(?:${codeSources.join("|")})${SEPARATOR_PATTERN}(?:${aliasSources.join("|")})(?=$|[^A-Za-z])`,
     "gi"
   );
+}
+
+function buildStandaloneCodeRegex(codes) {
+  if (!Array.isArray(codes) || codes.length === 0) {
+    return null;
+  }
+
+  const codeSources = codes
+    .filter((code) => code.length >= 3)
+    .map(escapeRegex)
+    .sort((left, right) => right.length - left.length);
+
+  if (codeSources.length === 0) {
+    return null;
+  }
+
+  return new RegExp(`(^|[^A-Za-z])(?:${codeSources.join("|")})(?=$|[^A-Za-z])`, "gi");
 }
 
 function buildAliasPattern(alias) {
