@@ -643,9 +643,45 @@ const RULES = [
   "MATCH,Other",
 ];
 
+// 国家/地区分组名称集合，用于判断哪些分组是"国家分组"
+const COUNTRY_GROUP_NAMES = new Set(["HK", "TW", "JP", "SG", "US"]);
+
 function main(config) {
   const proxyNames = getProxyNames(config);
-  config["proxy-groups"] = GROUP_SPECS.map((spec) => buildGroup(spec, proxyNames));
+
+  // 第一步：构建所有分组
+  const groups = GROUP_SPECS.map((spec) => buildGroup(spec, proxyNames));
+
+  // 第二步：识别出实际有节点的国家分组（proxies 不是仅 ["REJECT"]）
+  const validCountryGroups = new Set();
+  for (const g of groups) {
+    if (COUNTRY_GROUP_NAMES.has(g.name)) {
+      const hasRealProxies = Array.isArray(g.proxies) && g.proxies.some((p) => p !== "REJECT");
+      if (hasRealProxies) {
+        validCountryGroups.add(g.name);
+      }
+    }
+  }
+
+  // 第三步：从服务分组的 proxies 中移除引用了空国家分组的名称
+  for (const g of groups) {
+    if (!COUNTRY_GROUP_NAMES.has(g.name) && Array.isArray(g.proxies)) {
+      g.proxies = g.proxies.filter((p) => !COUNTRY_GROUP_NAMES.has(p) || validCountryGroups.has(p));
+      // 如果过滤后 proxies 为空，添加 REJECT 兜底
+      if (g.proxies.length === 0) {
+        g.proxies = ["REJECT"];
+      }
+    }
+  }
+
+  // 第四步：移除没有节点的国家分组（避免生成无意义的空分组）
+  config["proxy-groups"] = groups.filter((g) => {
+    if (COUNTRY_GROUP_NAMES.has(g.name) && !validCountryGroups.has(g.name)) {
+      return false;
+    }
+    return true;
+  });
+
   config["rule-providers"] = Object.assign({}, config["rule-providers"] || {}, RULE_PROVIDERS);
   config.rules = RULES.slice();
   return config;
@@ -672,8 +708,13 @@ function buildGroup(spec, proxyNames) {
   const baseProxies = Array.isArray(spec.proxies) ? spec.proxies : [];
   const matchedNames = spec["include-all"] ? filterProxyNames(proxyNames, spec.filter, spec["exclude-filter"]) : [];
 
-  if (baseProxies.length || matchedNames.length) {
-    group.proxies = uniqueNames(baseProxies.concat(matchedNames));
+  const combined = uniqueNames(baseProxies.concat(matchedNames));
+
+  if (combined.length > 0) {
+    group.proxies = combined;
+  } else {
+    // 没有匹配到任何节点时，使用 REJECT 兜底，防止 proxies 为空导致配置校验失败
+    group.proxies = ["REJECT"];
   }
 
   delete group["include-all"];
