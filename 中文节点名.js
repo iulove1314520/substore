@@ -24,10 +24,12 @@ const LOCATION_FLAGS = {
   菲律宾: "🇵🇭",
   越南: "🇻🇳",
   印度: "🇮🇳",
+  孟加拉国: "🇧🇩",
   印度尼西亚: "🇮🇩",
   阿联酋: "🇦🇪",
   沙特阿拉伯: "🇸🇦",
   卡塔尔: "🇶🇦",
+  哈萨克斯坦: "🇰🇿",
   以色列: "🇮🇱",
   土耳其: "🇹🇷",
   英国: "🇬🇧",
@@ -65,6 +67,7 @@ const LOCATION_FLAGS = {
   澳大利亚: "🇦🇺",
   新西兰: "🇳🇿",
   南非: "🇿🇦",
+  尼日利亚: "🇳🇬",
   埃及: "🇪🇬",
   保加利亚: "🇧🇬",
 };
@@ -82,10 +85,12 @@ const LOCATION_CODES = {
   菲律宾: ["ph", "phl"],
   越南: ["vn", "vnm"],
   印度: ["in", "ind"],
+  孟加拉国: ["bd", "bgd"],
   印度尼西亚: ["id", "idn"],
   阿联酋: ["ae", "uae"],
   沙特阿拉伯: ["sa", "sau"],
   卡塔尔: ["qa", "qat"],
+  哈萨克斯坦: ["kz", "kaz"],
   以色列: ["il", "isr"],
   土耳其: ["tr", "tur"],
   英国: ["uk", "gb", "gbr"],
@@ -123,6 +128,7 @@ const LOCATION_CODES = {
   澳大利亚: ["au", "aus"],
   新西兰: ["nz", "nzl"],
   南非: ["za", "zaf"],
+  尼日利亚: ["ng", "nga"],
   埃及: ["eg", "egy"],
   保加利亚: ["bg", "bgr"],
 };
@@ -208,7 +214,7 @@ const LOCATION_RULES = buildLocationRules([
     ],
   },
 
-  // 东南亚、南亚与中东
+  // 东南亚、南亚、中亚与中东
   {
     zh: "新加坡",
     aliases: [
@@ -272,6 +278,14 @@ const LOCATION_RULES = buildLocationRules([
     ],
   },
   {
+    zh: "孟加拉国",
+    aliases: [
+      "bangladesh",
+      "dhaka",
+      "bgd",
+    ],
+  },
+  {
     zh: "印度尼西亚",
     aliases: [
       "indonesia",
@@ -307,6 +321,17 @@ const LOCATION_RULES = buildLocationRules([
       "qatar",
       "doha",
       "qat",
+    ],
+  },
+  {
+    zh: "哈萨克斯坦",
+    aliases: [
+      "kazakhstan",
+      "astana",
+      "almaty",
+      ["nur", "sultan"],
+      "nursultan",
+      "kaz",
     ],
   },
   {
@@ -692,6 +717,15 @@ const LOCATION_RULES = buildLocationRules([
       ["cape", "town"],
       "capetown",
       "zaf",
+    ],
+  },
+  {
+    zh: "尼日利亚",
+    aliases: [
+      "nigeria",
+      "lagos",
+      "abuja",
+      "nga",
     ],
   },
   {
