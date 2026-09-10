@@ -10,7 +10,8 @@
  * - 统一地区识别，避免“广 / 新 / 美”误收节点。
  * - Auto、地区组、Other 排除游戏节点；Game 等仍可手选游戏节点。
  * - China_3 / China_4 使用 classical；China_5 内置兼容的下载规则。
- * - 局域网规则提前，Cloudflare 放在具体应用之后。
+ * - 局域网和个人直连例外优先；具体应用先于通用平台及 EMBY 关键词。
+ * - Cloudflare 域名与共享 IP 分开匹配，并继续自动更新。
  * - 测速使用 HTTPS + 204 校验，失败触发阈值为 5。
  * - 空地区组清理、重名和引用检查；可选精简服务列表。
  *
@@ -97,6 +98,7 @@ const SERVICE_SPECS = [
 
 // 保留原规则源和缓存名称；China 对应局域网列表，China_2～China_6 对应国内补充规则。
 // 这些 URL 都是带 DOMAIN-SUFFIX / IP-CIDR 等类型的 classical 文本列表。
+// Cloudflare 的纯域名、IPv4、IPv6 源在 buildRuleProviders 中分别配置。
 const RULE_PROVIDER_URLS = {
   "1Password": "https://raw.githubusercontent.com/iulove1314520/iulove/refs/heads/main/1password.list",
   "OpenAI": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OpenAI/OpenAI.list",
@@ -107,7 +109,6 @@ const RULE_PROVIDER_URLS = {
   "YouTube": "https://raw.githubusercontent.com/iulove1314520/ios_rule_script/refs/heads/master/rule/Clash/YouTube/YouTube.list",
   "Google": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Google/Google.list",
   "Github": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GitHub/GitHub.list",
-  "Cloudflare": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Cloudflare/Cloudflare.list",
   "Paypal": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PayPal/PayPal.list",
   "Telegram": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Telegram/Telegram.list",
   "Discord": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/Discord/Discord.list",
@@ -158,25 +159,30 @@ const DOWNLOAD_RULES = [
   "PROCESS-NAME,baidunetdisk.exe"
 ];
 
-// China（局域网）优先；具体应用优先于 Cloudflare 及全局列表。
-// 国内网站和下载规则保持原有的相对优先级，末尾仍由 Other 兜底。
+// RULES 决定分流优先级；SERVICE_SPECS 只控制面板中的分组和选项。
+// 具体应用优先于 Google / Microsoft；EMBY 的远程关键词列表放在具体应用之后。
+// Game 与 Microsoft 共享登录域名，保留 Microsoft 在 Game 前，避免改变账号登录出口。
+// China_5 仍是未命中前面规则时的下载直连；未改为下载器强制直连。
 const RULES = [
+  // 局域网、个人直连和已确认的精确例外。
   "RULE-SET,China,China",
+  "RULE-SET,China_6,China",
   "RULE-SET,1Password,1Password",
+  // 避免 OpenAI 的 sentry.io 规则接管 Disney 的遥测域名。
+  "DOMAIN-SUFFIX,disney.my.sentry.io,Disney",
+  // 个人 Worldwide_2 明确收录的域名，优先于 EMBY 的 texon 关键词。
+  "DOMAIN-SUFFIX,sub.texon.io,Worldwide",
+
+  // 具体应用；Discord 在 Google 前，流媒体和 EPIC 在 Microsoft 前。
   "RULE-SET,OpenAI,OpenAI",
   "RULE-SET,Gemini,Gemini",
   "RULE-SET,Claude,Claude",
   "RULE-SET,Perplexity,Perplexity",
-  "RULE-SET,EMBY,EMBY",
+  "RULE-SET,Discord,Discord",
   "RULE-SET,YouTube,YouTube",
-  "RULE-SET,Google,Google",
   "RULE-SET,Github,Github",
   "RULE-SET,Paypal,Paypal",
   "RULE-SET,Telegram,Telegram",
-  "RULE-SET,Discord,Discord",
-  "RULE-SET,Apple,Apple",
-  "RULE-SET,OneDrive,OneDrive",
-  "RULE-SET,Microsoft,Microsoft",
   "RULE-SET,X,X",
   "RULE-SET,Instagram,Instagram",
   "RULE-SET,Facebook,Facebook",
@@ -190,7 +196,17 @@ const RULES = [
   "RULE-SET,Bahamut,Bahamut",
   "RULE-SET,EPIC,EPIC",
   "RULE-SET,Steam,Steam",
+
+  // 范围较广的平台规则；Gemini / YouTube、OneDrive 等子服务已在前面。
+  "RULE-SET,Google,Google",
+  "RULE-SET,Apple,Apple",
+  "RULE-SET,OneDrive,OneDrive",
+  "RULE-SET,Microsoft,Microsoft",
   "RULE-SET,Game,Game",
+  // 保留你的远程 EMBY 列表和自动更新；aaa、anime 等宽泛词不再抢先匹配已列出的应用。
+  "RULE-SET,EMBY,EMBY",
+
+  // 这里的 Cloudflare 仅包含域名，不包含第三方网站共用的 CDN IP。
   "RULE-SET,Cloudflare,Cloudflare",
   "RULE-SET,Worldwide,Worldwide",
   "RULE-SET,Worldwide_2,Worldwide",
@@ -198,7 +214,10 @@ const RULES = [
   "RULE-SET,China_3,China",
   "RULE-SET,China_4,China",
   "RULE-SET,China_5,China",
-  "RULE-SET,China_6,China",
+
+  // 共享 IP 仅在站点规则未命中时兜底；不为此主动解析域名。
+  "RULE-SET,Cloudflare_IPv4,Cloudflare,no-resolve",
+  "RULE-SET,Cloudflare_IPv6,Cloudflare,no-resolve",
   "GEOIP,CN,China",
   "MATCH,Other"
 ];
@@ -330,6 +349,27 @@ function buildRuleProviders() {
       interval: SETTINGS.ruleUpdateInterval,
     };
   }
+  // 新域名源包含原 Cloudflare 列表的域名，并独立于共享 IP 更新。
+  // 使用新缓存路径，避免沿用旧 classical 文本缓存作为 domain YAML 解析。
+  providers.Cloudflare = {
+    type: "http",
+    behavior: "domain",
+    format: "yaml",
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cloudflare.yaml",
+    path: "./ruleset/Cloudflare_Domain.yaml",
+    interval: SETTINGS.ruleUpdateInterval,
+  };
+  for (const version of [4, 6]) {
+    const name = "Cloudflare_IPv" + version;
+    providers[name] = {
+      type: "http",
+      behavior: "ipcidr",
+      format: "text",
+      url: "https://www.cloudflare.com/ips-v" + version + "/",
+      path: "./ruleset/" + name + ".list",
+      interval: SETTINGS.ruleUpdateInterval,
+    };
+  }
   providers.China_5 = {
     type: "inline",
     behavior: "classical",
@@ -377,4 +417,3 @@ function validateReferences(groups, proxyNames, providers, rules) {
     }
   }
 }
-
