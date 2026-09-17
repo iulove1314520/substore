@@ -11,6 +11,8 @@
 
 const FLAG_RE = /(?:[\uD83C][\uDDE6-\uDDFF]){2}/g;
 const LEADING_LABEL_RE = /^(?:(?:（[^）]*）|\([^)]*\)|【[^】]*】|\[[^\]]*\])\s*)+/;
+const DECORATION_RE =
+  /(?:🏴‍☠️|[\s\-_|/\\:：=·•—~～「」『』《》<>【】\[\]（）()])+/g;
 
 const INFO_ONLY_LABELS = new Set([
   "tg",
@@ -165,18 +167,23 @@ function isInformationalName(name) {
 }
 
 function getNameCandidates(name) {
-  const candidates = [name];
+  const candidates = new Set([name]);
   const withoutLeadingLabel = name.replace(LEADING_LABEL_RE, "").trim();
 
   if (withoutLeadingLabel && withoutLeadingLabel !== name) {
-    candidates.push(withoutLeadingLabel);
+    candidates.add(withoutLeadingLabel);
   }
 
-  return candidates;
+  for (const candidate of Array.from(candidates)) {
+    const compactCandidate = candidate.replace(DECORATION_RE, "");
+    if (compactCandidate) {
+      candidates.add(compactCandidate);
+    }
+  }
+
+  return Array.from(candidates);
 }
 
 function normalizeInfoLabel(name) {
-  return name
-    .replace(/[\s\-_|/\\:：=·•—~～【】\[\]（）()]+/g, "")
-    .toLowerCase();
+  return name.replace(DECORATION_RE, "").replace(/\./g, "").toLowerCase();
 }
