@@ -19,7 +19,8 @@
  *   并生成地区/低倍率手选组、隐藏测速子组和粘性负载均衡组。
  * - 低倍率判定与 V2/节点排序.js 一致：倍率数值小于 1，或带 EX / 低倍率 标签；不再生成高倍率组。
  * - apple@cn / microsoft@cn / category-games@cn 在服务规则前直连，切换 Apple、Microsoft、Steam 组不影响国内 CDN。
- * - 可选屏蔽非国内目标的 UDP 443（QUIC）；AI 与 TikTok 组通过官方 default-selected 声明默认出口。
+ * - 可选屏蔽非国内目标的 UDP 443（QUIC）；ChatGPT / Gemini / Claude / Grok 默认 REJECT，TikTok 默认 JP，
+ *   均通过官方 default-selected 显式声明，列表首项与之保持一致以兼容旧内核。
  * - 节点域名的私有 DNS 策略按注册域折叠为 +. 形式；公共 DNS 识别名单与 MyClash 同步。
  * - 机场原有 rule-providers / sub-rules 不再输出，节点 dialer-proxy 指向已删除策略组时移除该字段，避免内核启动失败。
  * - 保留 v1 的地区识别、空组清理、节点重名和引用完整性校验。
@@ -99,9 +100,11 @@ const LOW_MULTIPLIER_TAG = /(?:^|[^A-Za-z0-9])EX(?=$|[^A-Za-z])|低倍率/i;
 // gameNodes：附加名称含“游戏/game”的专线节点；noNodes：不加入订阅节点。
 const SERVICE_SPECS = [
   {"name":"1Password","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
-  {"name":"OpenAI","proxies":["US","JP","SG","REJECT"],"defaultSelected":"US","regions":["JP","SG","US","UK","FR","DE"]},
-  {"name":"Gemini","proxies":["US","HK","TW","JP","SG","REJECT"],"defaultSelected":"US","expandNodes":true},
-  {"name":"Claude","proxies":["US","REJECT"],"defaultSelected":"US","regions":["US"]},
+  // AI 服务默认 REJECT，需手动选择出口，避免误用不受支持的地区。
+  {"name":"ChatGPT","proxies":["REJECT","US","JP","SG"],"defaultSelected":"REJECT","regions":["JP","SG","US","UK","FR","DE"]},
+  {"name":"Gemini","proxies":["REJECT","US","HK","TW","JP","SG"],"defaultSelected":"REJECT","expandNodes":true},
+  {"name":"Claude","proxies":["REJECT","US"],"defaultSelected":"REJECT","regions":["US"]},
+  {"name":"Grok","proxies":["REJECT","US","JP","SG"],"defaultSelected":"REJECT","regions":["JP","SG","US","UK","FR","DE"]},
   {"name":"Perplexity","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
   {"name":"EMBY","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true},
   {"name":"YouTube","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
@@ -118,11 +121,11 @@ const SERVICE_SPECS = [
   {"name":"Instagram","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Facebook","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Xiaohongsu","proxies":["DIRECT","HK","TW","JP","SG","US"]},
-  {"name":"DouYin","proxies":["DIRECT","HK","TW","JP","SG","US"]},
+  {"name":"DouYin","proxies":["DIRECT","HK","TW","JP","SG","US"],"expandNodes":true},
   {"name":"Spotify","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Netflix","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
   {"name":"Disney","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
-  {"name":"TikTok","proxies":["JP","HK","TW","SG","US","REJECT"],"defaultSelected":"JP"},
+  {"name":"TikTok","proxies":["JP","HK","TW","SG","US","REJECT"],"defaultSelected":"JP","expandNodes":true},
   {"name":"Bahamut","proxies":["TW"],"regions":["TW"]},
   {"name":"Bilibili","proxies":["DIRECT","HK","TW","SG"],"regions":["HK","TW","SG","MO"]},
   {"name":"Steam","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
@@ -182,9 +185,11 @@ const RULE_PROVIDER_SPECS = {
   "Games_CN": mrsDomain("category-games@cn"),
 
   "1Password": classicalText(PERSONAL_LIST_ROOT + "1password.list"),
-  "OpenAI_Domain": mrsDomain("openai"),
+  "ChatGPT_Domain": mrsDomain("openai"),
   "Gemini_Domain": mrsDomain("google-gemini"),
   "Claude_Domain": mrsDomain("anthropic"),
+  // xai 列表含 grok.com、grok.x.com、grokipedia.com、x.ai。
+  "Grok_Domain": mrsDomain("xai"),
   "Perplexity_Domain": mrsDomain("perplexity"),
   "YouTube_Domain": mrsDomain("youtube"),
   "Google_Domain": mrsDomain("google"),
@@ -348,9 +353,10 @@ const SERVICE_RULES = [
   // Emby Premiere 授权校验服务器，公共列表未必收录。
   "DOMAIN-SUFFIX,mb3admin.com,EMBY",
 
-  "RULE-SET,OpenAI_Domain,OpenAI",
+  "RULE-SET,ChatGPT_Domain,ChatGPT",
   "RULE-SET,Gemini_Domain,Gemini",
   "RULE-SET,Claude_Domain,Claude",
+  "RULE-SET,Grok_Domain,Grok",
   "RULE-SET,Perplexity_Domain,Perplexity",
   "RULE-SET,Discord_Domain,Discord",
   "RULE-SET,YouTube_Domain,YouTube",
