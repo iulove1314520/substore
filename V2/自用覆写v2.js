@@ -14,6 +14,7 @@
  * - 新增 preserve / managed DNS 模式；托管模式支持分流解析和机场私有 DNS。
  * - 托管 DNS 只保留与节点域名相关的机场 fake-ip-filter / DNS 策略条目，合并用户 hosts，不改写节点 server。
  * - 不使用 GEOIP / GEOSITE，避免内核下载 geodata；下载器进程规则前置，并保证进程识别未被关闭。
+ * - 规则集统一经 fastly.jsdelivr.net 拉取；raw.githubusercontent.com 国内直连常 TLS 超时，会让内核启动失败。
  * - 默认精简服务组，并生成地区/倍率手选组、隐藏测速子组和粘性负载均衡组。
  * - 保留 v1 的地区识别、空组清理、节点重名和引用完整性校验。
  *
@@ -45,6 +46,8 @@ const SETTINGS = {
   tolerance: 50,
   maxFailedTimes: 5,
   ruleUpdateInterval: 86400,
+  // 留空则内核直连下载规则集；若 jsdelivr 也不可达，可填策略组名（如 "Worldwide"）改为经代理下载。
+  ruleProviderProxy: "",
 };
 
 const COUNTRY_GROUP_NAMES = ["HK", "TW", "JP", "SG", "US"];
@@ -118,14 +121,17 @@ const SERVICE_SPECS = [
   {"name":"China","proxies":["DIRECT"],"noNodes":true},
 ];
 
+// 全部走 fastly.jsdelivr.net：内核在启动阶段直连下载规则集，raw.githubusercontent.com 在国内经常握手超时。
 const METACUBEX_DOMAIN_ROOT =
-  "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/";
+  "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geosite/";
 const METACUBEX_IP_ROOT =
-  "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/";
+  "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/";
 const BETT_IP_ROOT =
   "https://fastly.jsdelivr.net/gh/appshubcc/bett-rules@meta/geo/geoip/";
 const BETT_DOMAIN_ROOT =
   "https://fastly.jsdelivr.net/gh/appshubcc/bett-rules@meta/geo/geosite/";
+// 个人列表同样经 jsdelivr；分支引用带 CDN 缓存，仓库更新后需等缓存刷新才会生效。
+const PERSONAL_LIST_ROOT = "https://fastly.jsdelivr.net/gh/iulove1314520/iulove@main/";
 
 function mrsDomain(file, root) {
   return {
@@ -159,9 +165,7 @@ const RULE_PROVIDER_SPECS = {
   "China_Domain": mrsDomain("cn"),
   "China_IP": mrsIp("cn"),
 
-  "1Password": classicalText(
-    "https://raw.githubusercontent.com/iulove1314520/iulove/refs/heads/main/1password.list"
-  ),
+  "1Password": classicalText(PERSONAL_LIST_ROOT + "1password.list"),
   "OpenAI_Domain": mrsDomain("openai"),
   "Gemini_Domain": mrsDomain("google-gemini"),
   "Claude_Domain": mrsDomain("anthropic"),
@@ -203,16 +207,10 @@ const RULE_PROVIDER_SPECS = {
   "Game_Domain": mrsDomain("category-games-!cn"),
   "Worldwide_Domain": mrsDomain("geolocation-!cn"),
 
-  // 个性化列表没有等价的稳定 MRS，继续保留原更新地址。
-  "EMBY_Custom": classicalText(
-    "https://raw.githubusercontent.com/iulove1314520/iulove/main/emby.list"
-  ),
-  "Worldwide_Custom": classicalText(
-    "https://raw.githubusercontent.com/iulove1314520/iulove/main/Global.list"
-  ),
-  "China_Custom": classicalText(
-    "https://raw.githubusercontent.com/iulove1314520/iulove/refs/heads/main/china.list"
-  ),
+  // 个性化列表没有等价的稳定 MRS，继续使用 classical 文本。
+  "EMBY_Custom": classicalText(PERSONAL_LIST_ROOT + "emby.list"),
+  "Worldwide_Custom": classicalText(PERSONAL_LIST_ROOT + "Global.list"),
+  "China_Custom": classicalText(PERSONAL_LIST_ROOT + "china.list"),
 };
 
 // 公共 EMBY 域名使用 MRS；个人列表作为补充而不是替代。
@@ -583,6 +581,9 @@ function buildRuleProviders() {
       path: "./ruleset/" + name + (spec.format === "mrs" ? ".mrs" : ".list"),
       interval: SETTINGS.ruleUpdateInterval,
     };
+    if (SETTINGS.ruleProviderProxy) {
+      providers[name].proxy = SETTINGS.ruleProviderProxy;
+    }
   }
 
   providers.China_Download = {
@@ -818,6 +819,13 @@ function validateReferences(groups, proxyNames, providers, rules) {
     visited.add(name);
   }
   for (const group of groups) visit(group.name);
+
+  for (const name of Object.keys(providers)) {
+    const proxy = providers[name].proxy;
+    if (proxy && !validNames.has(proxy)) {
+      throw new Error("自用v2：规则集 " + name + " 的下载代理不存在：" + proxy);
+    }
+  }
 
   for (const rule of rules) {
     const parts = rule.split(",");
