@@ -15,7 +15,8 @@
  * - 托管 DNS 只保留与节点域名相关的机场 fake-ip-filter / DNS 策略条目，合并用户 hosts，不改写节点 server。
  * - 不使用 GEOIP / GEOSITE，避免内核下载 geodata；下载器进程规则前置，并保证进程识别未被关闭。
  * - 规则集统一经 fastly.jsdelivr.net 拉取；raw.githubusercontent.com 国内直连常 TLS 超时，会让内核启动失败。
- * - 默认精简服务组，并生成地区/倍率手选组、隐藏测速子组和粘性负载均衡组。
+ * - 默认精简服务组：仅 AI、影视、Other 展开全部节点，游戏组附加游戏专线，其余引用 Manual；
+ *   并生成地区/倍率手选组、隐藏测速子组和粘性负载均衡组。
  * - 保留 v1 的地区识别、空组清理、节点重名和引用完整性校验。
  *
  * 官方字段参考：
@@ -24,7 +25,7 @@
  */
 
 const SETTINGS = {
-  // false：每个服务组保留完整节点列表；true：普通服务共用 Manual 组。
+  // false：每个服务组都展开全部普通节点；true：仅 expandNodes / regions 组展开节点，其余共用 Manual 组。
   compactServiceGroups: true,
   // preserve：完全保留原 DNS/hosts；managed：启用本脚本的分流 DNS。
   dnsMode: "managed",
@@ -84,15 +85,16 @@ const MULTIPLIER_PATTERNS = [
 const LOW_MULTIPLIER_TAG = /低倍率|低倍|免费|(?:^|[^A-Za-z])free(?:$|[^A-Za-z])/i;
 
 // 首项决定无历史选择时的默认出口。
-// noNodes：不加入订阅节点；keepNodes：精简模式下仍保留独立节点列表。
+// regions：只展开匹配地区的节点；expandNodes：精简模式下仍展开全部普通节点（AI、影视、Other）；
+// gameNodes：附加名称含“游戏/game”的专线节点；noNodes：不加入订阅节点。
 const SERVICE_SPECS = [
   {"name":"1Password","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
   {"name":"OpenAI","proxies":["REJECT","US","JP","SG"],"regions":["JP","SG","US","UK","FR","DE"]},
-  {"name":"Gemini","proxies":["REJECT","HK","TW","JP","SG","US"]},
+  {"name":"Gemini","proxies":["REJECT","HK","TW","JP","SG","US"],"expandNodes":true},
   {"name":"Claude","proxies":["REJECT","US"],"regions":["US"]},
-  {"name":"Perplexity","proxies":["Auto","HK","TW","JP","SG","US"]},
-  {"name":"EMBY","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
-  {"name":"YouTube","proxies":["Auto","HK","TW","JP","SG","US"]},
+  {"name":"Perplexity","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
+  {"name":"EMBY","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true},
+  {"name":"YouTube","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
   {"name":"Google","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Github","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Cloudflare","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
@@ -108,16 +110,16 @@ const SERVICE_SPECS = [
   {"name":"Xiaohongsu","proxies":["DIRECT","HK","TW","JP","SG","US"]},
   {"name":"DouYin","proxies":["DIRECT","HK","TW","JP","SG","US"]},
   {"name":"Spotify","proxies":["Auto","HK","TW","JP","SG","US"]},
-  {"name":"Netflix","proxies":["Auto","HK","TW","JP","SG","US"]},
-  {"name":"Disney","proxies":["Auto","HK","TW","JP","SG","US"]},
+  {"name":"Netflix","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
+  {"name":"Disney","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
   {"name":"TikTok","proxies":["REJECT","HK","TW","JP","SG","US"]},
   {"name":"Bahamut","proxies":["TW"],"regions":["TW"]},
   {"name":"Bilibili","proxies":["DIRECT","HK","TW","SG"],"regions":["HK","TW","SG","MO"]},
-  {"name":"Steam","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"keepNodes":true},
-  {"name":"EPIC","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"keepNodes":true},
-  {"name":"Game","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"keepNodes":true},
+  {"name":"Steam","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
+  {"name":"EPIC","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
+  {"name":"Game","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
   {"name":"Worldwide","proxies":["Auto","HK","TW","JP","SG","US"]},
-  {"name":"Other","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"excludeGame":true},
+  {"name":"Other","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true},
   {"name":"China","proxies":["DIRECT"],"noNodes":true},
 ];
 
@@ -540,22 +542,24 @@ function buildGroups(proxyNames) {
   }
   utilityGroupNames.push(...validRateGroups);
 
+  // 游戏专线不进入 Auto / Manual / 普通服务组，只附加到声明了 gameNodes 的组。
+  const gameNodes = proxyNames.filter((name) => GAME_PATTERN.test(name));
+
   const serviceGroups = [];
   for (const spec of SERVICE_SPECS) {
     const members = spec.proxies.filter(
       (name) => !COUNTRY_GROUP_NAMES.includes(name) || validCountries.has(name)
     );
     if (!spec.noNodes) {
-      const candidates = spec.excludeGame || spec.regions ? normalNodes : proxyNames;
       if (!spec.regions) members.push(...utilityGroupNames);
-      if (SETTINGS.compactServiceGroups && !spec.regions && !spec.keepNodes) {
-        members.push("Manual");
+      if (spec.regions) {
+        members.push(...normalNodes.filter((name) => matchesRegions(name, spec.regions)));
+      } else if (spec.expandNodes || !SETTINGS.compactServiceGroups) {
+        members.push(...normalNodes);
       } else {
-        const matched = spec.regions
-          ? candidates.filter((name) => matchesRegions(name, spec.regions))
-          : candidates;
-        members.push(...matched);
+        members.push("Manual");
       }
+      if (spec.gameNodes) members.push(...gameNodes);
     }
     serviceGroups.push({ name: spec.name, type: "select", proxies: withFallback(members) });
   }
