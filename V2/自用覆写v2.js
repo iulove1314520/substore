@@ -28,6 +28,7 @@
  *   支持范围过滤后的节点，未识别地区的节点不进入 AI 组。“低倍率”只出现在显式标记 lowRate 的组。
  * - Bahamut 列台湾与港澳节点，Bilibili 列港澳台与 Bstation 东南亚授权区节点；Steam / EPIC 只有 DIRECT、
  *   低倍率和 HK / TW / JP / SG / US 五地节点；小红书、抖音只有 DIRECT 和全部节点。
+ * - 面板顺序：负载均衡 → AdBlock → Auto → Manual → 低倍率 → 其余服务组 → 地区组；EMBY / YouTube 默认走低倍率。
  * - 保留 v1 的地区识别、空组清理、节点重名和引用完整性校验。
  *
  * 官方字段参考：
@@ -69,6 +70,7 @@ const SETTINGS = {
 
 const COUNTRY_GROUP_NAMES = ["HK", "TW", "JP", "SG", "US"];
 const LOW_RATE_GROUP_NAME = "低倍率";
+const AD_BLOCK_GROUP_NAME = "AdBlock";
 const LOAD_BALANCE_GROUP_NAME = "负载均衡";
 const GAME_PATTERN = /游戏|game/i;
 const BUILTIN_PROXY_NAMES = ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL"];
@@ -230,7 +232,7 @@ const LOW_MULTIPLIER_TAG = /(?:^|[^A-Za-z0-9])EX(?=$|[^A-Za-z])|低倍率/i;
 // gameNodes：附加名称含“游戏/game”的专线节点；noNodes：不加入订阅节点；enabledBy：受对应 SETTINGS 开关控制。
 const SERVICE_SPECS = [
   // 广告拦截：默认 REJECT，PASS 用于临时放行；不加入任何节点。
-  {"name":"AdBlock","proxies":["REJECT","REJECT-DROP","PASS"],"noNodes":true,"enabledBy":"enableAdBlock"},
+  {"name":AD_BLOCK_GROUP_NAME,"proxies":["REJECT","REJECT-DROP","PASS"],"noNodes":true,"enabledBy":"enableAdBlock"},
   {"name":"1Password","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
   // AI 服务：默认 REJECT；可选 TW / JP / SG / US 地区组；节点按各家官方支持范围过滤，见 AI_UNSUPPORTED_REGIONS。
   {"name":"ChatGPT","proxies":AI_GROUP_PROXIES,"defaultSelected":"REJECT","regions":aiSupportedRegions("ChatGPT")},
@@ -238,8 +240,9 @@ const SERVICE_SPECS = [
   {"name":"Claude","proxies":AI_GROUP_PROXIES,"defaultSelected":"REJECT","regions":aiSupportedRegions("Claude")},
   {"name":"Grok","proxies":AI_GROUP_PROXIES,"defaultSelected":"REJECT","regions":aiSupportedRegions("Grok")},
   {"name":"Perplexity","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
-  {"name":"EMBY","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true,"lowRate":true},
-  {"name":"YouTube","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true,"lowRate":true},
+  // EMBY / YouTube 默认走“低倍率”；没有低倍率节点时自动退到下一项。
+  {"name":"EMBY","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true,"lowRate":true,"defaultSelected":LOW_RATE_GROUP_NAME},
+  {"name":"YouTube","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true,"lowRate":true,"defaultSelected":LOW_RATE_GROUP_NAME},
   {"name":"Google","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Github","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Cloudflare","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
@@ -754,13 +757,12 @@ function buildGroups(proxyNames) {
     }
   }
 
-  const baseGroups = [makeUrlTest("Auto", normalNodes, SETTINGS.autoInterval, false)];
-  if (SETTINGS.compactServiceGroups) {
-    baseGroups.push({ name: "Manual", type: "select", proxies: withFallback(normalNodes) });
-  }
-
+  const autoGroup = makeUrlTest("Auto", normalNodes, SETTINGS.autoInterval, false);
+  const manualGroups = SETTINGS.compactServiceGroups
+    ? [{ name: "Manual", type: "select", proxies: withFallback(normalNodes) }]
+    : [];
   const hasLoadBalance = SETTINGS.enableLoadBalance && normalNodes.length > 1;
-  if (hasLoadBalance) baseGroups.push(makeLoadBalance(normalNodes));
+  const loadBalanceGroups = hasLoadBalance ? [makeLoadBalance(normalNodes)] : [];
   const hasLowRate = rateGroups.length > 0;
 
   // 游戏专线不进入 Auto / Manual / 普通服务组，只附加到声明了 gameNodes 的组。
@@ -774,9 +776,9 @@ function buildGroups(proxyNames) {
     if (spec.enabledBy && !SETTINGS[spec.enabledBy]) continue;
     const declared = spec.proxies.filter((name) => !isCountry(name) || validCountries.has(name));
 
-    // 成员顺序：默认出口 → Auto → 负载均衡 → 低倍率 → 地区组 → 其他声明项 → 全部节点 → 游戏专线。
+    // 成员顺序：默认出口 → Auto → 负载均衡 → 低倍率 → 地区组 → 其他声明项 → 全部节点 → 游戏专线；
+    // defaultSelected 命中的成员最后再提到首位。
     const members = [];
-    if (spec.defaultSelected && declared.includes(spec.defaultSelected)) members.push(spec.defaultSelected);
     members.push(...declared.filter(isBuiltin));
     members.push(...declared.filter((name) => name === "Auto"));
     if (!spec.noNodes && !spec.regions) {
@@ -800,12 +802,26 @@ function buildGroups(proxyNames) {
     }
     const group = { name: spec.name, type: "select", proxies: withFallback(members) };
     if (spec.defaultSelected && group.proxies.includes(spec.defaultSelected)) {
+      // 默认出口提到首位，兼容不支持 default-selected 的旧内核；成员不存在时整段跳过。
+      group.proxies = [spec.defaultSelected].concat(
+        group.proxies.filter((name) => name !== spec.defaultSelected)
+      );
       group["default-selected"] = spec.defaultSelected;
     }
     serviceGroups.push(group);
   }
 
-  return baseGroups.concat(serviceGroups, countryGroups, rateGroups);
+  // 面板顺序：负载均衡 → AdBlock → Auto → Manual → 低倍率（含隐藏测速子组）→ 其余服务组 → 地区组。
+  const adBlockGroups = serviceGroups.filter((group) => group.name === AD_BLOCK_GROUP_NAME);
+  const otherServiceGroups = serviceGroups.filter((group) => group.name !== AD_BLOCK_GROUP_NAME);
+  return loadBalanceGroups.concat(
+    adBlockGroups,
+    [autoGroup],
+    manualGroups,
+    rateGroups,
+    otherServiceGroups,
+    countryGroups
+  );
 }
 
 function buildRuleProviders() {
