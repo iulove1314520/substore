@@ -24,6 +24,8 @@
  * - 节点域名的私有 DNS 策略按注册域折叠为 +. 形式；公共 DNS 识别名单与 MyClash 同步。
  * - 机场原有 rule-providers / sub-rules 不再输出，节点 dialer-proxy 指向已删除策略组时移除该字段，避免内核启动失败。
  * - 可选 AdBlock 组：REJECT / REJECT-DROP / PASS 三选一，规则排在所有服务规则之前，规则集来自 217heidai/adblockfilters。
+ * - 地区识别表扩展到 59 个国家/地区，与节点中文化脚本同源；AI 组只保留 REJECT、TW/JP/SG/US 和按各家官方
+ *   支持范围过滤后的节点，未识别地区的节点不进入 AI 组。“低倍率”只作为影视、社交两类组的可选出口。
  * - 保留 v1 的地区识别、空组清理、节点重名和引用完整性校验。
  *
  * 官方字段参考：
@@ -65,26 +67,146 @@ const SETTINGS = {
 
 const COUNTRY_GROUP_NAMES = ["HK", "TW", "JP", "SG", "US"];
 const LOW_RATE_GROUP_NAME = "低倍率";
+// 只有这些类别的服务组把“低倍率”列为可选出口；其余组不带。
+const LOW_RATE_CATEGORIES = ["video", "social"];
 const LOAD_BALANCE_GROUP_NAME = "负载均衡";
 const GAME_PATTERN = /游戏|game/i;
 const BUILTIN_PROXY_NAMES = ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL"];
 
-// 按节点名称识别地区，不代表实际出口检测。
-const REGION_PATTERNS = {
-  "HK": "🇭🇰|香港|Hong\\s*Kong|(?:^|[^a-z])HKG?(?=[^a-z]|$)|(?:^|[\\s/|_-])港(?=$|[\\s/|_-])",
-  "TW": "🇹🇼|台[湾灣]|臺灣|Taiwan|台北|臺北|(?:^|[^a-z])TWN?(?=[^a-z]|$)|(?:^|[\\s/|_-])台(?=$|[\\s/|_-])",
-  "JP": "🇯🇵|日本|Japan|东京|東京|大阪|(?:^|[^a-z])JPN?(?=[^a-z]|$)|(?:^|[\\s/|_-])日(?=$|[\\s/|_-])",
-  "SG": "🇸🇬|新加坡|Singapore|狮城|獅城|(?:^|[^a-z])SGP?(?=[^a-z]|$)",
-  "US": "🇺🇸|🇺🇲|美国|美國|United\\s*States|波特兰|达拉斯|俄勒冈|凤凰城|费利蒙|硅谷|拉斯维加斯|洛杉矶|圣何塞|圣克拉拉|西雅图|芝加哥|休斯顿|(?:^|[^a-z])U\\.?S\\.?A?\\.?(?=[^a-z]|$)",
-  "UK": "🇬🇧|英国|英國|United\\s*Kingdom|Britain|伦敦|倫敦|(?:^|[^a-z])(?:UK|GB|GBR)(?=[^a-z]|$)",
-  "FR": "🇫🇷|法国|法國|France|巴黎|(?:^|[^a-z])FRA?(?=[^a-z]|$)",
-  "DE": "🇩🇪|德国|德國|Germany|法兰克福|法蘭克福|(?:^|[^a-z])DEU?(?=[^a-z]|$)",
-  "MO": "🇲🇴|澳门|澳門|Macau|Macao|(?:^|[^a-z])(?:MO|MAC)(?=[^a-z]|$)",
+// 国家/地区识别表：与 V2/节点中文化.js 的别名表同源，保证两个脚本对同一节点的地区判断一致。按节点名称识别，不代表实际出口。
+// flag / zh 直接匹配；en 忽略大小写、前后不能是字母，多词之间允许空格、点、下划线、短横线、斜杠或连写；
+// iso 默认只匹配大写（避免 IN、IT、AT、BE 与英文单词撞车），CORE_REGIONS 中五个地区沿用 v1 行为允许小写。
+const COUNTRY_TABLE = {
+  HK: { flag: "🇭🇰", zh: ["香港"], en: ["hong kong", "kowloon"], iso: ["HK", "HKG"] },
+  MO: { flag: "🇲🇴", zh: ["澳门", "澳門"], en: ["macau", "macao"], iso: ["MO", "MAC"] },
+  TW: { flag: "🇹🇼", zh: ["台湾", "臺灣", "台灣"], en: ["taiwan", "tai wan", "tai pei", "kaoh siung", "tai chung", "taipei", "kaohsiung", "taichung", "hsinchu"], iso: ["TW", "TWN"] },
+  CN: { flag: "🇨🇳", zh: ["中国", "中國"], en: ["china", "main land", "mainland", "beijing", "shanghai", "guangzhou", "shenzhen", "hangzhou", "chengdu", "nanjing", "wuhan", "xiamen"], iso: ["CHN"] },
+  JP: { flag: "🇯🇵", zh: ["日本"], en: ["japan", "tokyo", "osaka", "yokohama", "nagoya", "kyoto", "fukuoka", "sapporo"], iso: ["JP", "JPN"] },
+  KR: { flag: "🇰🇷", zh: ["韩国", "韓國"], en: ["south korea", "republic of korea", "korea republic", "southkorea", "korea", "seoul", "busan", "incheon"], iso: ["KR", "KOR"] },
+  SG: { flag: "🇸🇬", zh: ["新加坡", "狮城", "獅城"], en: ["singapore", "singa pore"], iso: ["SG", "SGP"] },
+  MY: { flag: "🇲🇾", zh: ["马来西亚", "馬來西亞"], en: ["malaysia", "kuala lumpur", "kualalumpur", "penang", "johor"], iso: ["MY", "MYS"] },
+  TH: { flag: "🇹🇭", zh: ["泰国", "泰國"], en: ["thailand", "bangkok", "thai"], iso: ["TH", "THA"] },
+  PH: { flag: "🇵🇭", zh: ["菲律宾", "菲律賓"], en: ["philippines", "manila"], iso: ["PH", "PHL"] },
+  VN: { flag: "🇻🇳", zh: ["越南"], en: ["vietnam", "ho chi minh", "hochiminh", "saigon", "hanoi"], iso: ["VN", "VNM"] },
+  IN: { flag: "🇮🇳", zh: [], en: ["india", "mumbai", "delhi", "bangalore", "bengaluru", "hyderabad", "chennai", "kolkata"], iso: ["IN", "IND"] },
+  BD: { flag: "🇧🇩", zh: ["孟加拉国", "孟加拉國"], en: ["bangladesh", "dhaka"], iso: ["BD", "BGD"] },
+  ID: { flag: "🇮🇩", zh: ["印度尼西亚", "印度尼西亞", "印尼"], en: ["indonesia", "jakarta", "surabaya"], iso: ["ID", "IDN"] },
+  MM: { flag: "🇲🇲", zh: ["缅甸", "緬甸"], en: ["myanmar", "burma", "yangon"], iso: ["MM", "MMR"] },
+  AE: { flag: "🇦🇪", zh: ["阿联酋", "阿聯酋"], en: ["united arab emirates", "unitedarabemirates", "dubai", "abu dhabi", "abudhabi"], iso: ["AE", "UAE"] },
+  SA: { flag: "🇸🇦", zh: ["沙特阿拉伯", "沙特"], en: ["saudi arabia", "saudiarabia", "riyadh", "jeddah"], iso: ["SA", "SAU"] },
+  QA: { flag: "🇶🇦", zh: ["卡塔尔"], en: ["qatar", "doha"], iso: ["QA", "QAT"] },
+  KZ: { flag: "🇰🇿", zh: ["哈萨克斯坦", "哈薩克斯坦"], en: ["kazakhstan", "astana", "almaty", "nur sultan", "nursultan"], iso: ["KZ", "KAZ"] },
+  IL: { flag: "🇮🇱", zh: ["以色列"], en: ["israel", "tel aviv", "telaviv", "jerusalem"], iso: ["IL", "ISR"] },
+  TR: { flag: "🇹🇷", zh: ["土耳其"], en: ["turkey", "turkiye", "istanbul", "ankara"], iso: ["TR", "TUR"] },
+  UK: { flag: "🇬🇧", zh: ["英国", "英國"], en: ["united kingdom", "u k", "unitedkingdom", "britain", "england", "london", "manchester", "birmingham"], iso: ["UK", "GB", "GBR"] },
+  DE: { flag: "🇩🇪", zh: ["德国", "德國"], en: ["germany", "frankfurt", "berlin", "munich", "dusseldorf", "hamburg"], iso: ["DE", "DEU"] },
+  FR: { flag: "🇫🇷", zh: ["法国", "法國"], en: ["france", "paris", "marseille", "lyon"], iso: ["FR", "FRA"] },
+  IT: { flag: "🇮🇹", zh: ["意大利", "義大利"], en: ["italy", "rome", "milan", "naples"], iso: ["IT", "ITA"] },
+  ES: { flag: "🇪🇸", zh: ["西班牙"], en: ["spain", "madrid", "barcelona", "valencia"], iso: ["ES", "ESP"] },
+  PT: { flag: "🇵🇹", zh: ["葡萄牙"], en: ["portugal", "lisbon", "porto"], iso: ["PT", "PRT"] },
+  NL: { flag: "🇳🇱", zh: ["荷兰", "荷蘭"], en: ["netherlands", "holland", "amsterdam", "rotterdam"], iso: ["NL", "NLD"] },
+  CH: { flag: "🇨🇭", zh: ["瑞士"], en: ["switzerland", "zurich", "geneva"], iso: ["CH", "CHE", "SUI"] },
+  SE: { flag: "🇸🇪", zh: ["瑞典"], en: ["sweden", "stockholm", "gothenburg"], iso: ["SE", "SWE"] },
+  IS: { flag: "🇮🇸", zh: ["冰岛", "冰島"], en: ["iceland", "reykjavik"], iso: ["IS", "ISL"] },
+  NO: { flag: "🇳🇴", zh: ["挪威"], en: ["norway", "oslo", "bergen"], iso: ["NOR"] },
+  FI: { flag: "🇫🇮", zh: ["芬兰", "芬蘭"], en: ["finland", "helsinki"], iso: ["FI", "FIN"] },
+  DK: { flag: "🇩🇰", zh: ["丹麦", "丹麥"], en: ["denmark", "copenhagen"], iso: ["DK", "DNK"] },
+  BE: { flag: "🇧🇪", zh: ["比利时", "比利時"], en: ["belgium", "brussels"], iso: ["BE", "BEL"] },
+  AT: { flag: "🇦🇹", zh: ["奥地利", "奧地利"], en: ["austria", "vienna"], iso: ["AT", "AUT"] },
+  IE: { flag: "🇮🇪", zh: ["爱尔兰", "愛爾蘭"], en: ["ireland", "dublin"], iso: ["IE", "IRL"] },
+  LU: { flag: "🇱🇺", zh: ["卢森堡", "盧森堡"], en: ["luxembourg", "luxemburg"], iso: ["LU", "LUX"] },
+  PL: { flag: "🇵🇱", zh: ["波兰", "波蘭"], en: ["poland", "warsaw"], iso: ["PL", "POL"] },
+  CZ: { flag: "🇨🇿", zh: ["捷克"], en: ["czech republic", "czechrepublic", "czechia", "czech", "prague"], iso: ["CZ", "CZE"] },
+  HU: { flag: "🇭🇺", zh: ["匈牙利"], en: ["hungary", "budapest"], iso: ["HU", "HUN"] },
+  RO: { flag: "🇷🇴", zh: ["罗马尼亚", "羅馬尼亞"], en: ["romania", "bucharest"], iso: ["RO", "ROU"] },
+  GR: { flag: "🇬🇷", zh: ["希腊", "希臘"], en: ["greece", "athens"], iso: ["GR", "GRC"] },
+  BG: { flag: "🇧🇬", zh: ["保加利亚", "保加利亞"], en: ["bulgaria", "sofia"], iso: ["BG", "BGR"] },
+  RU: { flag: "🇷🇺", zh: ["俄罗斯", "俄羅斯"], en: ["russia", "moscow", "saint petersburg", "st petersburg", "saintpetersburg", "stpetersburg"], iso: ["RU", "RUS"] },
+  UA: { flag: "🇺🇦", zh: ["乌克兰", "烏克蘭"], en: ["ukraine", "kyiv", "kiev"], iso: ["UA", "UKR"] },
+  US: { flag: "🇺🇸", zh: ["美国", "美國"], en: ["united states", "united states of america", "u s a", "u s", "los angeles", "san jose", "new york", "las vegas", "silicon valley", "losangeles", "sanjose", "newyork", "lasvegas", "siliconvalley", "seattle", "chicago", "dallas", "miami", "phoenix", "atlanta", "ashburn"], iso: ["US", "USA"] },
+  CA: { flag: "🇨🇦", zh: ["加拿大"], en: ["canada", "toronto", "vancouver", "montreal", "ottawa", "calgary"], iso: ["CA", "CAN"] },
+  MX: { flag: "🇲🇽", zh: ["墨西哥"], en: ["mexico", "mexico city", "mexicocity", "guadalajara"], iso: ["MX", "MEX"] },
+  BR: { flag: "🇧🇷", zh: ["巴西"], en: ["brazil", "sao paulo", "rio de janeiro", "saopaulo", "riodejaneiro"], iso: ["BR", "BRA"] },
+  AR: { flag: "🇦🇷", zh: ["阿根廷"], en: ["argentina", "buenos aires", "buenosaires"], iso: ["AR", "ARG"] },
+  CL: { flag: "🇨🇱", zh: ["智利"], en: ["chile", "santiago"], iso: ["CL", "CHL"] },
+  CO: { flag: "🇨🇴", zh: ["哥伦比亚", "哥倫比亞"], en: ["colombia", "bogota"], iso: ["CO", "COL"] },
+  PE: { flag: "🇵🇪", zh: ["秘鲁", "秘魯"], en: ["peru", "lima"], iso: ["PE", "PER"] },
+  AU: { flag: "🇦🇺", zh: ["澳大利亚", "澳大利亞", "澳洲"], en: ["australia", "sydney", "melbourne", "brisbane", "perth"], iso: ["AU", "AUS"] },
+  NZ: { flag: "🇳🇿", zh: ["新西兰", "紐西蘭"], en: ["new zealand", "newzealand", "auckland", "wellington", "christchurch"], iso: ["NZ", "NZL"] },
+  ZA: { flag: "🇿🇦", zh: ["南非"], en: ["south africa", "southafrica", "johannesburg", "cape town", "capetown"], iso: ["ZA", "ZAF"] },
+  NG: { flag: "🇳🇬", zh: ["尼日利亚", "奈及利亞"], en: ["nigeria", "lagos", "abuja"], iso: ["NG", "NGA"] },
+  EG: { flag: "🇪🇬", zh: ["埃及"], en: ["egypt", "cairo"], iso: ["EG", "EGY"] },
 };
 
-const REGION_MATCHERS = {};
-for (const region of Object.keys(REGION_PATTERNS)) {
-  REGION_MATCHERS[region] = new RegExp(REGION_PATTERNS[region], "i");
+// ISO 代号允许小写匹配的地区（v1 行为）。
+const CORE_REGIONS = ["HK", "TW", "JP", "SG", "US"];
+
+// 补充模式：v1 沿用的中文城市名、单字简称，以及需要排除歧义的写法。
+const REGION_EXTRA_PATTERNS = {
+  HK: "(?:^|[\\s/|_-])港(?=$|[\\s/|_-])",
+  TW: "台北|臺北|高雄|台中|臺中|(?:^|[\\s/|_-])台(?=$|[\\s/|_-])",
+  JP: "东京|東京|大阪|(?:^|[\\s/|_-])日(?=$|[\\s/|_-])",
+  US: "波特兰|达拉斯|俄勒冈|凤凰城|费利蒙|硅谷|拉斯维加斯|洛杉矶|圣何塞|圣克拉拉|西雅图|芝加哥|休斯顿",
+  UK: "伦敦|倫敦",
+  FR: "巴黎",
+  DE: "法兰克福|法蘭克福",
+  // “印度尼西亚”包含“印度”，需排除；CN 代号后面不能接数字，避免 CN2 线路被当成中国。
+  IN: "印度(?!尼西亚|尼西亞|尼)",
+  CN: "(?:^|[^A-Za-z])CN(?=$|[^A-Za-z0-9])",
+};
+
+const REGION_MATCHERS = buildRegionMatchers();
+
+function buildRegionMatchers() {
+  const matchers = {};
+  for (const code of Object.keys(COUNTRY_TABLE)) {
+    const entry = COUNTRY_TABLE[code];
+    const loose = CORE_REGIONS.includes(code);
+    const isoPatterns = entry.iso.map(tokenPattern);
+    const parts = [escapeRegex(entry.flag)]
+      .concat(entry.zh.map(escapeRegex), entry.en.map(aliasPattern), loose ? isoPatterns : []);
+    if (REGION_EXTRA_PATTERNS[code]) parts.push(REGION_EXTRA_PATTERNS[code]);
+    matchers[code] = {
+      ci: new RegExp(parts.join("|"), "i"),
+      cs: loose || isoPatterns.length === 0 ? null : new RegExp(isoPatterns.join("|")),
+    };
+  }
+  return matchers;
+}
+
+// 英文别名：前后不能是字母；多词之间允许空格、点、下划线、短横线、斜杠或直接连写。
+function aliasPattern(alias) {
+  return "(?:^|[^A-Za-z])" + alias.split(" ").map(escapeRegex).join("[\\s._/-]*") + "(?=$|[^A-Za-z])";
+}
+
+function tokenPattern(code) {
+  return "(?:^|[^A-Za-z])" + escapeRegex(code) + "(?=$|[^A-Za-z])";
+}
+
+function escapeRegex(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// 各 AI 服务的官方支持范围，核对日期 2026-09-19，逐家独立核对，以“表内地区 − 官方未列出的地区”表达：
+// ChatGPT：OpenAI 支持列表未含中国大陆、香港、澳门、俄罗斯。
+// Gemini：Google 列表含香港、澳门；中国大陆仅 Workspace 账号，俄罗斯未列。
+// Claude：Anthropic 列表未含中国大陆、香港、澳门、俄罗斯、缅甸。
+// Grok：xAI 未公布国家列表，官方口径为“X 可用的地区”并排除美国全面制裁地区；X 在中国大陆与俄罗斯被封锁，按此排除。
+// 识别表未覆盖的地区一律不进入 AI 组。
+const AI_UNSUPPORTED_REGIONS = {
+  ChatGPT: ["CN", "HK", "MO", "RU"],
+  Gemini: ["CN", "RU"],
+  Claude: ["CN", "HK", "MO", "RU", "MM"],
+  Grok: ["CN", "RU"],
+};
+
+// AI 组可选出口固定为 REJECT 与四个地区组，其余成员是按各家支持范围过滤后的节点。
+const AI_GROUP_PROXIES = ["REJECT", "TW", "JP", "SG", "US"];
+
+function aiSupportedRegions(service) {
+  const unsupported = AI_UNSUPPORTED_REGIONS[service];
+  if (!unsupported) throw new Error("自用v2：未定义支持范围的 AI 服务：" + service);
+  return Object.keys(COUNTRY_TABLE).filter((code) => !unsupported.includes(code));
 }
 
 // 倍率识别与 V2/节点排序.js 完全一致，保证两个脚本对同一节点的分类相同。
@@ -101,40 +223,43 @@ const LOW_MULTIPLIER_TAG = /(?:^|[^A-Za-z0-9])EX(?=$|[^A-Za-z])|低倍率/i;
 // proxies 里只声明默认出口、Auto 和地区组；实际成员顺序由 buildGroups 统一整理为：
 // 默认出口（DIRECT / REJECT / defaultSelected）→ Auto → 负载均衡 → 低倍率 → 地区组 → 全部节点 → 游戏专线。
 // defaultSelected 再用官方 default-selected 字段显式声明，成员不存在时忽略。REJECT 只用于 AI 组和 AdBlock。
+// category：video（影视平台）/ social（社交平台），只有这两类组带“低倍率”选项；
 // regions：只展开匹配地区的节点；expandNodes：精简模式下仍展开全部普通节点（AI、影视、Other）；
 // gameNodes：附加名称含“游戏/game”的专线节点；noNodes：不加入订阅节点；enabledBy：受对应 SETTINGS 开关控制。
 const SERVICE_SPECS = [
   // 广告拦截：默认 REJECT，PASS 用于临时放行；不加入任何节点。
   {"name":"AdBlock","proxies":["REJECT","REJECT-DROP","PASS"],"noNodes":true,"enabledBy":"enableAdBlock"},
   {"name":"1Password","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
-  // AI 服务默认 REJECT，需手动选择出口，避免误用不受支持的地区。
-  {"name":"ChatGPT","proxies":["REJECT","US","JP","SG"],"defaultSelected":"REJECT","regions":["JP","SG","US","UK","FR","DE"]},
-  {"name":"Gemini","proxies":["REJECT","US","HK","TW","JP","SG"],"defaultSelected":"REJECT","expandNodes":true},
-  {"name":"Claude","proxies":["REJECT","US"],"defaultSelected":"REJECT","regions":["US"]},
-  {"name":"Grok","proxies":["REJECT","US","JP","SG"],"defaultSelected":"REJECT","regions":["JP","SG","US","UK","FR","DE"]},
+  // AI 服务：默认 REJECT；可选 TW / JP / SG / US 地区组；节点按各家官方支持范围过滤，见 AI_UNSUPPORTED_REGIONS。
+  {"name":"ChatGPT","proxies":AI_GROUP_PROXIES,"defaultSelected":"REJECT","regions":aiSupportedRegions("ChatGPT")},
+  {"name":"Gemini","proxies":AI_GROUP_PROXIES,"defaultSelected":"REJECT","regions":aiSupportedRegions("Gemini")},
+  {"name":"Claude","proxies":AI_GROUP_PROXIES,"defaultSelected":"REJECT","regions":aiSupportedRegions("Claude")},
+  {"name":"Grok","proxies":AI_GROUP_PROXIES,"defaultSelected":"REJECT","regions":aiSupportedRegions("Grok")},
   {"name":"Perplexity","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
-  {"name":"EMBY","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true},
-  {"name":"YouTube","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
+  {"name":"EMBY","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
+  {"name":"YouTube","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
   {"name":"Google","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Github","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Cloudflare","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
   {"name":"Paypal","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
-  {"name":"Telegram","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
-  {"name":"Discord","proxies":["Auto","HK","TW","JP","SG","US"]},
+  // Telegram 在中国大陆无法直连，不提供 DIRECT。
+  {"name":"Telegram","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
+  {"name":"Discord","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
   {"name":"Apple","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
   {"name":"OneDrive","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
   {"name":"Microsoft","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
-  {"name":"X","proxies":["Auto","HK","TW","JP","SG","US"]},
-  {"name":"Instagram","proxies":["Auto","HK","TW","JP","SG","US"]},
-  {"name":"Facebook","proxies":["Auto","HK","TW","JP","SG","US"]},
-  {"name":"Xiaohongsu","proxies":["DIRECT","HK","TW","JP","SG","US"]},
-  {"name":"DouYin","proxies":["DIRECT","HK","TW","JP","SG","US"],"expandNodes":true},
+  {"name":"X","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
+  {"name":"Instagram","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
+  {"name":"Facebook","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
+  {"name":"Xiaohongsu","proxies":["DIRECT","HK","TW","JP","SG","US"],"category":"social"},
+  {"name":"DouYin","proxies":["DIRECT","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
   {"name":"Spotify","proxies":["Auto","HK","TW","JP","SG","US"]},
-  {"name":"Netflix","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
-  {"name":"Disney","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
-  {"name":"TikTok","proxies":["JP","HK","TW","SG","US"],"defaultSelected":"JP","expandNodes":true},
-  {"name":"Bahamut","proxies":["TW"],"regions":["TW"]},
-  {"name":"Bilibili","proxies":["DIRECT","HK","TW","SG"],"regions":["HK","TW","SG","MO"]},
+  {"name":"Netflix","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
+  {"name":"Disney","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
+  {"name":"TikTok","proxies":["JP","HK","TW","SG","US"],"defaultSelected":"JP","expandNodes":true,"category":"video"},
+  // Bahamut / Bilibili 锁定地区，不加入“低倍率”这类跨地区出口。
+  {"name":"Bahamut","proxies":["TW"],"regions":["TW"],"category":"video"},
+  {"name":"Bilibili","proxies":["DIRECT","HK","TW","SG"],"regions":["HK","TW","SG","MO"],"category":"video"},
   {"name":"Steam","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
   {"name":"EPIC","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
   {"name":"Game","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
@@ -314,7 +439,7 @@ const COMMON_DNS_MARKERS = [
 
 // IP 类条目加前后边界，避免 1.1.1.1 命中 11.1.1.1、1.2.4.8 命中 10.1.2.4.8；关键词仍按子串匹配。
 function dnsMarkerSource(marker) {
-  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = escapeRegex(marker);
   if (/^\d+(?:\.\d+){3}$/.test(marker)) return "(?:^|[^\\d.])" + escaped + "(?=$|[^\\d.])";
   if (marker.includes(":")) return "(?:^|[^0-9a-f:])" + escaped + "(?=$|[^0-9a-f:])";
   return escaped;
@@ -530,10 +655,11 @@ function getProxyNames(config) {
 
 function matchesRegions(name, regions) {
   return regions.some((region) => {
-    if (!REGION_MATCHERS[region]) {
+    const matcher = REGION_MATCHERS[region];
+    if (!matcher) {
       throw new Error("自用v2：未定义的地区：" + region);
     }
-    return REGION_MATCHERS[region].test(name);
+    return matcher.ci.test(name) || (matcher.cs !== null && matcher.cs.test(name));
   });
 }
 
@@ -627,12 +753,9 @@ function buildGroups(proxyNames) {
     baseGroups.push({ name: "Manual", type: "select", proxies: withFallback(normalNodes) });
   }
 
-  const utilityGroupNames = [];
-  if (SETTINGS.enableLoadBalance && normalNodes.length > 1) {
-    baseGroups.push(makeLoadBalance(normalNodes));
-    utilityGroupNames.push(LOAD_BALANCE_GROUP_NAME);
-  }
-  if (rateGroups.length > 0) utilityGroupNames.push(LOW_RATE_GROUP_NAME);
+  const hasLoadBalance = SETTINGS.enableLoadBalance && normalNodes.length > 1;
+  if (hasLoadBalance) baseGroups.push(makeLoadBalance(normalNodes));
+  const hasLowRate = rateGroups.length > 0;
 
   // 游戏专线不进入 Auto / Manual / 普通服务组，只附加到声明了 gameNodes 的组。
   const gameNodes = proxyNames.filter((name) => GAME_PATTERN.test(name));
@@ -650,7 +773,11 @@ function buildGroups(proxyNames) {
     if (spec.defaultSelected && declared.includes(spec.defaultSelected)) members.push(spec.defaultSelected);
     members.push(...declared.filter(isBuiltin));
     members.push(...declared.filter((name) => name === "Auto"));
-    if (!spec.noNodes && !spec.regions) members.push(...utilityGroupNames);
+    if (!spec.noNodes && !spec.regions) {
+      if (hasLoadBalance) members.push(LOAD_BALANCE_GROUP_NAME);
+      // “低倍率”只进影视、社交两类组。
+      if (hasLowRate && LOW_RATE_CATEGORIES.includes(spec.category)) members.push(LOW_RATE_GROUP_NAME);
+    }
     members.push(...declared.filter(isCountry));
     members.push(...declared.filter((name) => !isBuiltin(name) && name !== "Auto" && !isCountry(name)));
     if (!spec.noNodes) {
