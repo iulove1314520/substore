@@ -25,7 +25,9 @@
  * - 机场原有 rule-providers / sub-rules 不再输出，节点 dialer-proxy 指向已删除策略组时移除该字段，避免内核启动失败。
  * - 可选 AdBlock 组：REJECT / REJECT-DROP / PASS 三选一，规则排在所有服务规则之前，规则集来自 217heidai/adblockfilters。
  * - 地区识别表扩展到 59 个国家/地区，与节点中文化脚本同源；AI 组只保留 REJECT、TW/JP/SG/US 和按各家官方
- *   支持范围过滤后的节点，未识别地区的节点不进入 AI 组。“低倍率”只作为影视、社交两类组的可选出口。
+ *   支持范围过滤后的节点，未识别地区的节点不进入 AI 组。“低倍率”只出现在显式标记 lowRate 的组。
+ * - Bahamut 列台湾与港澳节点，Bilibili 列港澳台与 Bstation 东南亚授权区节点；Steam / EPIC 只有 DIRECT、
+ *   低倍率和 HK / TW / JP / SG / US 五地节点；小红书、抖音只有 DIRECT 和全部节点。
  * - 保留 v1 的地区识别、空组清理、节点重名和引用完整性校验。
  *
  * 官方字段参考：
@@ -67,8 +69,6 @@ const SETTINGS = {
 
 const COUNTRY_GROUP_NAMES = ["HK", "TW", "JP", "SG", "US"];
 const LOW_RATE_GROUP_NAME = "低倍率";
-// 只有这些类别的服务组把“低倍率”列为可选出口；其余组不带。
-const LOW_RATE_CATEGORIES = ["video", "social"];
 const LOAD_BALANCE_GROUP_NAME = "负载均衡";
 const GAME_PATTERN = /游戏|game/i;
 const BUILTIN_PROXY_NAMES = ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL"];
@@ -223,8 +223,10 @@ const LOW_MULTIPLIER_TAG = /(?:^|[^A-Za-z0-9])EX(?=$|[^A-Za-z])|低倍率/i;
 // proxies 里只声明默认出口、Auto 和地区组；实际成员顺序由 buildGroups 统一整理为：
 // 默认出口（DIRECT / REJECT / defaultSelected）→ Auto → 负载均衡 → 低倍率 → 地区组 → 全部节点 → 游戏专线。
 // defaultSelected 再用官方 default-selected 字段显式声明，成员不存在时忽略。REJECT 只用于 AI 组和 AdBlock。
-// category：video（影视平台）/ social（社交平台），只有这两类组带“低倍率”选项；
-// regions：只展开匹配地区的节点；expandNodes：精简模式下仍展开全部普通节点（AI、影视、Other）；
+// lowRate：带“低倍率”选项，仅限明确标记的组；loadBalance:false：不带“负载均衡”；
+// regions：地区锁定组，只展开匹配地区的节点，不带负载均衡等跨地区出口；
+// nodeRegions：保留常规成员，节点部分只展开这些地区的节点（Steam / EPIC）；
+// expandNodes：精简模式下仍展开全部普通节点（AI 以外的影视、Other）；
 // gameNodes：附加名称含“游戏/game”的专线节点；noNodes：不加入订阅节点；enabledBy：受对应 SETTINGS 开关控制。
 const SERVICE_SPECS = [
   // 广告拦截：默认 REJECT，PASS 用于临时放行；不加入任何节点。
@@ -236,32 +238,36 @@ const SERVICE_SPECS = [
   {"name":"Claude","proxies":AI_GROUP_PROXIES,"defaultSelected":"REJECT","regions":aiSupportedRegions("Claude")},
   {"name":"Grok","proxies":AI_GROUP_PROXIES,"defaultSelected":"REJECT","regions":aiSupportedRegions("Grok")},
   {"name":"Perplexity","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
-  {"name":"EMBY","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
-  {"name":"YouTube","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
+  {"name":"EMBY","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true,"lowRate":true},
+  {"name":"YouTube","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true,"lowRate":true},
   {"name":"Google","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Github","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Cloudflare","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
   {"name":"Paypal","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
   // Telegram 在中国大陆无法直连，不提供 DIRECT。
-  {"name":"Telegram","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
-  {"name":"Discord","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
+  {"name":"Telegram","proxies":["Auto","HK","TW","JP","SG","US"],"lowRate":true},
+  {"name":"Discord","proxies":["Auto","HK","TW","JP","SG","US"],"lowRate":true},
   {"name":"Apple","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
-  {"name":"OneDrive","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
+  {"name":"OneDrive","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"lowRate":true},
   {"name":"Microsoft","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
-  {"name":"X","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
-  {"name":"Instagram","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
-  {"name":"Facebook","proxies":["Auto","HK","TW","JP","SG","US"],"category":"social"},
-  {"name":"Xiaohongsu","proxies":["DIRECT","HK","TW","JP","SG","US"],"category":"social"},
-  {"name":"DouYin","proxies":["DIRECT","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
+  {"name":"X","proxies":["Auto","HK","TW","JP","SG","US"],"lowRate":true},
+  {"name":"Instagram","proxies":["Auto","HK","TW","JP","SG","US"],"lowRate":true},
+  {"name":"Facebook","proxies":["Auto","HK","TW","JP","SG","US"]},
+  // 小红书、抖音是国内平台：只有 DIRECT 和全部节点，不带负载均衡和地区组。
+  {"name":"Xiaohongsu","proxies":["DIRECT"],"expandNodes":true,"loadBalance":false},
+  {"name":"DouYin","proxies":["DIRECT"],"expandNodes":true,"loadBalance":false},
   {"name":"Spotify","proxies":["Auto","HK","TW","JP","SG","US"]},
-  {"name":"Netflix","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
-  {"name":"Disney","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true,"category":"video"},
-  {"name":"TikTok","proxies":["JP","HK","TW","SG","US"],"defaultSelected":"JP","expandNodes":true,"category":"video"},
-  // Bahamut / Bilibili 锁定地区，不加入“低倍率”这类跨地区出口。
-  {"name":"Bahamut","proxies":["TW"],"regions":["TW"],"category":"video"},
-  {"name":"Bilibili","proxies":["DIRECT","HK","TW","SG"],"regions":["HK","TW","SG","MO"],"category":"video"},
-  {"name":"Steam","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
-  {"name":"EPIC","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
+  {"name":"Netflix","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
+  {"name":"Disney","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
+  {"name":"TikTok","proxies":["JP","HK","TW","SG","US"],"defaultSelected":"JP","expandNodes":true,"lowRate":true},
+  // 巴哈姆特动画疯：台湾主站授权最全，另有授权范围较窄的港澳版；只列这三地节点。
+  {"name":"Bahamut","proxies":["TW","HK"],"regions":["TW","HK","MO"]},
+  // 哔哩哔哩：港澳台限定内容对应 HK / MO / TW；规则集含 bilibili.tv、biliintl.com，Bstation 授权区为
+  // 印尼、马来西亚、新加坡、越南、泰国，菲律宾亦有发行。日韩美等地无对应内容，不列。
+  {"name":"Bilibili","proxies":["DIRECT","HK","TW","SG"],"regions":["HK","MO","TW","SG","MY","TH","VN","ID","PH"]},
+  // Steam / EPIC：只有 DIRECT、低倍率和 HK / TW / JP / SG / US 五地节点；游戏专线由 Game 组承载。
+  {"name":"Steam","proxies":["DIRECT"],"nodeRegions":["HK","TW","JP","SG","US"],"lowRate":true,"loadBalance":false},
+  {"name":"EPIC","proxies":["DIRECT"],"nodeRegions":["HK","TW","JP","SG","US"],"lowRate":true,"loadBalance":false},
   {"name":"Game","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
   {"name":"Worldwide","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Other","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"expandNodes":true},
@@ -774,15 +780,17 @@ function buildGroups(proxyNames) {
     members.push(...declared.filter(isBuiltin));
     members.push(...declared.filter((name) => name === "Auto"));
     if (!spec.noNodes && !spec.regions) {
-      if (hasLoadBalance) members.push(LOAD_BALANCE_GROUP_NAME);
-      // “低倍率”只进影视、社交两类组。
-      if (hasLowRate && LOW_RATE_CATEGORIES.includes(spec.category)) members.push(LOW_RATE_GROUP_NAME);
+      if (hasLoadBalance && spec.loadBalance !== false) members.push(LOAD_BALANCE_GROUP_NAME);
+      // “低倍率”只进显式标记 lowRate 的组。
+      if (hasLowRate && spec.lowRate) members.push(LOW_RATE_GROUP_NAME);
     }
     members.push(...declared.filter(isCountry));
     members.push(...declared.filter((name) => !isBuiltin(name) && name !== "Auto" && !isCountry(name)));
     if (!spec.noNodes) {
       if (spec.regions) {
         members.push(...normalNodes.filter((name) => matchesRegions(name, spec.regions)));
+      } else if (spec.nodeRegions) {
+        members.push(...normalNodes.filter((name) => matchesRegions(name, spec.nodeRegions)));
       } else if (spec.expandNodes || !SETTINGS.compactServiceGroups) {
         members.push(...normalNodes);
       } else {
