@@ -23,6 +23,7 @@
  *   均通过官方 default-selected 显式声明，列表首项与之保持一致以兼容旧内核。
  * - 节点域名的私有 DNS 策略按注册域折叠为 +. 形式；公共 DNS 识别名单与 MyClash 同步。
  * - 机场原有 rule-providers / sub-rules 不再输出，节点 dialer-proxy 指向已删除策略组时移除该字段，避免内核启动失败。
+ * - 可选 AdBlock 组：REJECT / REJECT-DROP / PASS 三选一，规则排在所有服务规则之前，规则集来自 217heidai/adblockfilters。
  * - 保留 v1 的地区识别、空组清理、节点重名和引用完整性校验。
  *
  * 官方字段参考：
@@ -43,8 +44,10 @@ const SETTINGS = {
   blockBilibiliPcdn: false,
   // 屏蔽非国内目标的 UDP 443（QUIC），让浏览器和 YouTube 回落 TCP；多数代理协议对 UDP 支持不佳。
   blockForeignQuic: true,
-  // 生成低倍率节点手选组及其隐藏测速子组；判定规则见 isLowRateNode。
+  // 生成“低倍率”手选组及其隐藏测速子组；判定规则见 isLowRateNode。
   enableLowRateGroup: true,
+  // 生成 AdBlock 组和广告域名规则；关闭后分组、规则集、规则一起不输出。
+  enableAdBlock: true,
   enableLoadBalance: true,
   loadBalanceStrategy: "sticky-sessions",
   testUrl: "https://www.gstatic.com/generate_204",
@@ -61,7 +64,7 @@ const SETTINGS = {
 };
 
 const COUNTRY_GROUP_NAMES = ["HK", "TW", "JP", "SG", "US"];
-const LOW_RATE_GROUP_NAME = "低倍率节点";
+const LOW_RATE_GROUP_NAME = "低倍率";
 const LOAD_BALANCE_GROUP_NAME = "负载均衡";
 const GAME_PATTERN = /游戏|game/i;
 const BUILTIN_PROXY_NAMES = ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL"];
@@ -95,10 +98,14 @@ const MULTIPLIER_PATTERNS = [
 const LOW_MULTIPLIER_MAX = 1;
 const LOW_MULTIPLIER_TAG = /(?:^|[^A-Za-z0-9])EX(?=$|[^A-Za-z])|低倍率/i;
 
-// 首项决定无历史选择时的默认出口；defaultSelected 再用官方 default-selected 字段显式声明，成员不存在时忽略。
+// proxies 里只声明默认出口、Auto 和地区组；实际成员顺序由 buildGroups 统一整理为：
+// 默认出口（DIRECT / REJECT / defaultSelected）→ Auto → 负载均衡 → 低倍率 → 地区组 → 全部节点 → 游戏专线。
+// defaultSelected 再用官方 default-selected 字段显式声明，成员不存在时忽略。REJECT 只用于 AI 组和 AdBlock。
 // regions：只展开匹配地区的节点；expandNodes：精简模式下仍展开全部普通节点（AI、影视、Other）；
-// gameNodes：附加名称含“游戏/game”的专线节点；noNodes：不加入订阅节点。
+// gameNodes：附加名称含“游戏/game”的专线节点；noNodes：不加入订阅节点；enabledBy：受对应 SETTINGS 开关控制。
 const SERVICE_SPECS = [
+  // 广告拦截：默认 REJECT，PASS 用于临时放行；不加入任何节点。
+  {"name":"AdBlock","proxies":["REJECT","REJECT-DROP","PASS"],"noNodes":true,"enabledBy":"enableAdBlock"},
   {"name":"1Password","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"]},
   // AI 服务默认 REJECT，需手动选择出口，避免误用不受支持的地区。
   {"name":"ChatGPT","proxies":["REJECT","US","JP","SG"],"defaultSelected":"REJECT","regions":["JP","SG","US","UK","FR","DE"]},
@@ -125,7 +132,7 @@ const SERVICE_SPECS = [
   {"name":"Spotify","proxies":["Auto","HK","TW","JP","SG","US"]},
   {"name":"Netflix","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
   {"name":"Disney","proxies":["Auto","HK","TW","JP","SG","US"],"expandNodes":true},
-  {"name":"TikTok","proxies":["JP","HK","TW","SG","US","REJECT"],"defaultSelected":"JP","expandNodes":true},
+  {"name":"TikTok","proxies":["JP","HK","TW","SG","US"],"defaultSelected":"JP","expandNodes":true},
   {"name":"Bahamut","proxies":["TW"],"regions":["TW"]},
   {"name":"Bilibili","proxies":["DIRECT","HK","TW","SG"],"regions":["HK","TW","SG","MO"]},
   {"name":"Steam","proxies":["DIRECT","Auto","HK","TW","JP","SG","US"],"gameNodes":true},
@@ -244,6 +251,11 @@ RULE_PROVIDER_SPECS.EMBY_Emos = mrsDomain(
   "emos-mihomo",
   "https://fastly.jsdelivr.net/gh/binaryu/emos-proxy-rule@main/rules/"
 );
+// 广告域名（精简版），与 MyClash 使用同一来源；受 enableAdBlock 控制。
+RULE_PROVIDER_SPECS.AdBlock_Domain = Object.assign(
+  mrsDomain("adblockmihomolite", "https://fastly.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/"),
+  { enabledBy: "enableAdBlock" }
+);
 
 const CHINA_DNS = ["223.5.5.5#DIRECT", "119.29.29.29#DIRECT"];
 const FOREIGN_DNS = [
@@ -345,6 +357,9 @@ const PREFIX_RULES = [
 const FOREIGN_QUIC_RULE =
   "AND,((NETWORK,UDP),(DST-PORT,443),(NOT,((OR,((RULE-SET,China_Domain),(RULE-SET,China_IP,no-resolve)))))),REJECT";
 
+// 广告域名先于一切服务规则拦截，否则会被 Google、YouTube 等规则先行放行。
+const AD_BLOCK_RULE = "RULE-SET,AdBlock_Domain,AdBlock";
+
 // 域名规则优先于 IP 规则；具体服务优先于通用平台和全球兜底。
 const SERVICE_RULES = [
   "RULE-SET,1Password,1Password",
@@ -406,7 +421,11 @@ const SERVICE_RULES = [
 ];
 
 function buildRules() {
-  return PREFIX_RULES.concat(SETTINGS.blockForeignQuic ? [FOREIGN_QUIC_RULE] : [], SERVICE_RULES);
+  return PREFIX_RULES.concat(
+    SETTINGS.blockForeignQuic ? [FOREIGN_QUIC_RULE] : [],
+    SETTINGS.enableAdBlock ? [AD_BLOCK_RULE] : [],
+    SERVICE_RULES
+  );
 }
 
 function main(config) {
@@ -618,13 +637,23 @@ function buildGroups(proxyNames) {
   // 游戏专线不进入 Auto / Manual / 普通服务组，只附加到声明了 gameNodes 的组。
   const gameNodes = proxyNames.filter((name) => GAME_PATTERN.test(name));
 
+  const isCountry = (name) => COUNTRY_GROUP_NAMES.includes(name);
+  const isBuiltin = (name) => BUILTIN_PROXY_NAMES.includes(name);
+
   const serviceGroups = [];
   for (const spec of SERVICE_SPECS) {
-    const members = spec.proxies.filter(
-      (name) => !COUNTRY_GROUP_NAMES.includes(name) || validCountries.has(name)
-    );
+    if (spec.enabledBy && !SETTINGS[spec.enabledBy]) continue;
+    const declared = spec.proxies.filter((name) => !isCountry(name) || validCountries.has(name));
+
+    // 成员顺序：默认出口 → Auto → 负载均衡 → 低倍率 → 地区组 → 其他声明项 → 全部节点 → 游戏专线。
+    const members = [];
+    if (spec.defaultSelected && declared.includes(spec.defaultSelected)) members.push(spec.defaultSelected);
+    members.push(...declared.filter(isBuiltin));
+    members.push(...declared.filter((name) => name === "Auto"));
+    if (!spec.noNodes && !spec.regions) members.push(...utilityGroupNames);
+    members.push(...declared.filter(isCountry));
+    members.push(...declared.filter((name) => !isBuiltin(name) && name !== "Auto" && !isCountry(name)));
     if (!spec.noNodes) {
-      if (!spec.regions) members.push(...utilityGroupNames);
       if (spec.regions) {
         members.push(...normalNodes.filter((name) => matchesRegions(name, spec.regions)));
       } else if (spec.expandNodes || !SETTINGS.compactServiceGroups) {
@@ -650,6 +679,7 @@ function buildRuleProviders() {
     if (name === "FakeIP_Filter" && SETTINGS.dnsMode !== "managed") continue;
 
     const spec = RULE_PROVIDER_SPECS[name];
+    if (spec.enabledBy && !SETTINGS[spec.enabledBy]) continue;
     if (spec.format === "mrs" && spec.behavior !== "domain" && spec.behavior !== "ipcidr") {
       throw new Error("自用v2：MRS 规则集只允许 domain 或 ipcidr：" + name);
     }
