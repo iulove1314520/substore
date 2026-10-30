@@ -1,6 +1,19 @@
-运行结果
-节点.yaml
-ikuuu.js
-photo_2026-09-19_13-27-00.jpg
-V2/test/fixtures/nodes.txt
-V2/test/run.js
+# 真实订阅、个人入口配置和本地样例
+/运行结果
+/节点.yaml
+/ikuuu.js
+/photo_2026-09-19_13-27-00.jpg
+/订阅/
+/V2/test/fixtures/nodes.txt
+/V2/test/run.js
+
+# 本机设置和开发依赖
+.agents/
+.claude/
+.codex/
+.kilo/
+.vscode/
+node_modules/
+*.log
+.env
+.env.*

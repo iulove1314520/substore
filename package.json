@@ -1,0 +1,14 @@
+{
+  "name": "substore-overrides",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test V2/test/dns-merge.test.cjs"
+  },
+  "devDependencies": {
+    "yaml": "2.9.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
