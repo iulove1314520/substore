@@ -219,7 +219,7 @@ function matchesRegion(name, code) {
 }
 
 // ---------------------------------------------------------------------------
-// 倍率识别：与 V2/节点排序.js 完全一致。低倍率 = 倍率数值小于 1，或带独立 EX 代号 / “低倍率”标签。
+// 倍率识别：沿用 V2/节点排序.js 的倍率规则；低倍率组还接纳独立 EX 代号、“低倍率”及“实验性 / 實驗性”标签。
 // ---------------------------------------------------------------------------
 
 const MULTIPLIER_PATTERNS = [
@@ -229,7 +229,7 @@ const MULTIPLIER_PATTERNS = [
   /倍率\s*[:：]?\s*(\d+(?:[.,]\d+)?)/,
 ];
 const LOW_MULTIPLIER_MAX = 1;
-const LOW_MULTIPLIER_TAG = /(?:^|[^A-Za-z0-9])EX(?=$|[^A-Za-z])|低倍率/i;
+const LOW_MULTIPLIER_TAG = /(?:^|[^A-Za-z0-9])EX(?=$|[^A-Za-z])|低倍率|实验性|實驗性/i;
 
 function extractMultiplier(name) {
   for (const pattern of MULTIPLIER_PATTERNS) {
