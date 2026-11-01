@@ -282,7 +282,7 @@ function aiSupportedRegions(service) {
 //                           ["HK", ...] 仅这些地区的节点 | "ai" 按 AI_UNSUPPORTED_REGIONS[name] 过滤
 //   locked: true            地区锁定组：不带负载均衡、低倍率和 Manual，nodes 必须是地区数组或 "ai"
 //   gameNodes: true         末尾附加名称含“游戏/game”的专线节点
-//   defaultSelected         默认出口，提到首位并写入 default-selected；成员不存在时忽略
+//   defaultSelected         默认出口，或按优先级排列的出口数组；存在的成员依次置顶，首项写入 default-selected
 //   emptyFallback           成员为空时的兜底出口，默认 REJECT
 //   enabledBy               受 SETTINGS 中对应布尔开关控制
 //
@@ -306,12 +306,12 @@ const SERVICE_SPECS = [
     enabledBy: "enableAdBlock", rules: { domain: { file: "adblockmihomolite", root: ROOTS.adblock, stage: "block" } } },
   { name: "1Password", direct: true, rules: { list: "1password.list" } },
 
-  // AI 服务：默认 REJECT；可选 TW / JP / SG / US 地区组；节点按各家官方支持范围过滤。
-  { name: "ChatGPT", head: AI_HEAD, auto: false, countries: AI_COUNTRIES, nodes: "ai", locked: true, defaultSelected: "REJECT", rules: { domain: "openai" } },
-  { name: "Gemini", head: AI_HEAD, auto: false, countries: AI_COUNTRIES, nodes: "ai", locked: true, defaultSelected: "REJECT", rules: { domain: "google-gemini" } },
+  // AI 服务：ChatGPT / Gemini / Grok 默认 US，Claude 默认 REJECT；节点按各家官方支持范围过滤。
+  { name: "ChatGPT", head: AI_HEAD, auto: false, countries: AI_COUNTRIES, nodes: "ai", locked: true, defaultSelected: "US", rules: { domain: "openai" } },
+  { name: "Gemini", head: AI_HEAD, auto: false, countries: AI_COUNTRIES, nodes: "ai", locked: true, defaultSelected: "US", rules: { domain: "google-gemini" } },
   { name: "Claude", head: AI_HEAD, auto: false, countries: AI_COUNTRIES, nodes: "ai", locked: true, defaultSelected: "REJECT", rules: { domain: "anthropic" } },
   // xai 列表含 grok.com、grok.x.com、grokipedia.com、x.ai。
-  { name: "Grok", head: AI_HEAD, auto: false, countries: AI_COUNTRIES, nodes: "ai", locked: true, defaultSelected: "REJECT", rules: { domain: "xai" } },
+  { name: "Grok", head: AI_HEAD, auto: false, countries: AI_COUNTRIES, nodes: "ai", locked: true, defaultSelected: "US", rules: { domain: "xai" } },
   { name: "Perplexity", nodes: "all", rules: { domain: "perplexity" } },
 
   // 影视：EMBY / YouTube 默认走低倍率，没有低倍率节点时自动退到下一项。
@@ -319,26 +319,26 @@ const SERVICE_SPECS = [
     rules: { domain: ["Emby", ROOTS.emby666], more: [{ kind: "domain", key: "Emos", file: "emos-mihomo", root: ROOTS.emos }],
              list: "emby.list", extra: ["DOMAIN-SUFFIX,mb3admin.com"] } },
   { name: "YouTube", nodes: "all", lowRate: true, defaultSelected: LOW_RATE_GROUP_NAME, rules: { domain: "youtube" } },
-  { name: "Google", rules: { domain: "google", ip: "google" } },
-  { name: "Github", rules: { domain: "github" } },
-  { name: "Cloudflare", direct: true, rules: { domain: "cloudflare", ip: "cloudflare" } },
+  { name: "Google", defaultSelected: "US", rules: { domain: "google", ip: "google" } },
+  { name: "Github", defaultSelected: "HK", rules: { domain: "github" } },
+  { name: "Cloudflare", direct: true, defaultSelected: ["HK", AUTO_GROUP_NAME], rules: { domain: "cloudflare", ip: "cloudflare" } },
   { name: "Paypal", direct: true, rules: { domain: "paypal" } },
   // Telegram 在中国大陆无法直连，不提供 DIRECT。
-  { name: "Telegram", lowRate: true, rules: { domain: "telegram", ip: "telegram" } },
-  { name: "Discord", lowRate: true, rules: { domain: "discord" } },
+  { name: "Telegram", lowRate: true, defaultSelected: "HK", rules: { domain: "telegram", ip: "telegram" } },
+  { name: "Discord", lowRate: true, defaultSelected: "HK", rules: { domain: "discord" } },
   { name: "Apple", direct: true, rules: { domain: "apple", ip: ["apple", ROOTS.bettIp] } },
-  { name: "OneDrive", direct: true, lowRate: true, rules: { domain: "onedrive" } },
-  { name: "Microsoft", direct: true, rules: { domain: "microsoft", ip: ["microsoft", ROOTS.bettIp] } },
-  { name: "X", lowRate: true, rules: { domain: "twitter", ip: "twitter" } },
-  { name: "Instagram", lowRate: true, rules: { domain: "instagram" } },
-  { name: "Facebook", rules: { domain: "facebook", ip: "facebook" } },
+  { name: "OneDrive", direct: true, lowRate: true, defaultSelected: LOW_RATE_GROUP_NAME, rules: { domain: "onedrive" } },
+  { name: "Microsoft", direct: true, defaultSelected: "JP", rules: { domain: "microsoft", ip: ["microsoft", ROOTS.bettIp] } },
+  { name: "X", lowRate: true, defaultSelected: "US", rules: { domain: "twitter", ip: "twitter" } },
+  { name: "Instagram", lowRate: true, defaultSelected: "US", rules: { domain: "instagram" } },
+  { name: "Facebook", defaultSelected: "US", rules: { domain: "facebook", ip: "facebook" } },
   // 国内平台：只有 DIRECT 和全部节点。
   Object.assign({ name: "Xiaohongsu", rules: { domain: "xiaohongshu" } }, DOMESTIC_ONLY),
   Object.assign({ name: "DouYin", rules: { domain: "douyin" } }, DOMESTIC_ONLY),
   { name: "Spotify", rules: { domain: "spotify", ip: ["spotify", ROOTS.bettIp] } },
   { name: "Netflix", nodes: "all", rules: { domain: "netflix", ip: "netflix" } },
   { name: "Disney", nodes: "all", rules: { domain: "disney", extra: ["DOMAIN-SUFFIX,disney.my.sentry.io"] } },
-  { name: "TikTok", auto: false, countries: ["JP", "HK", "TW", "SG", "US"], nodes: "all", lowRate: true, defaultSelected: "JP",
+  { name: "TikTok", head: ["REJECT"], auto: false, countries: ["JP", "HK", "TW", "SG", "US"], nodes: "all", lowRate: true, defaultSelected: ["REJECT", "JP"],
     rules: { domain: "tiktok", ip: ["tiktok", ROOTS.bettIp] } },
   // 巴哈姆特动画疯：台湾主站授权最全，另有授权范围较窄的港澳版；没有对应节点时退回 Auto 而不是 REJECT。
   { name: "Bahamut", auto: false, countries: ["TW", "HK"], nodes: ["TW", "HK", "MO"], locked: true, emptyFallback: AUTO_GROUP_NAME,
@@ -353,7 +353,7 @@ const SERVICE_SPECS = [
   { name: "Game", direct: true, gameNodes: true, rules: { domain: "category-games-!cn" } },
   { name: WORLDWIDE_GROUP_NAME, rules: { domain: "geolocation-!cn", list: "Global.list", extra: ["DOMAIN-SUFFIX,sub.texon.io"] } },
   // MATCH 兜底组，没有自己的规则。
-  { name: OTHER_GROUP_NAME, direct: true, nodes: "all" },
+  { name: OTHER_GROUP_NAME, direct: true, nodes: "all", defaultSelected: "HK" },
   // 国内：个人列表在前置直连阶段，域名集在全球规则之后，IP 集最后。
   { name: CHINA_GROUP_NAME, direct: true, auto: false, countries: false, loadBalance: false, nodes: "none",
     rules: { domain: "cn", ip: "cn", list: { file: "china.list", stage: "prefix" } } },
@@ -715,10 +715,12 @@ function buildServiceGroup(spec, context) {
   if (spec.gameNodes) members.push(...context.gameNames);
 
   const group = { name: spec.name, type: "select", proxies: withFallback(members, spec.emptyFallback || "REJECT") };
-  if (spec.defaultSelected && group.proxies.includes(spec.defaultSelected)) {
-    // 提到首位以兼容不支持 default-selected 的旧内核。
-    group.proxies = [spec.defaultSelected].concat(group.proxies.filter((name) => name !== spec.defaultSelected));
-    group["default-selected"] = spec.defaultSelected;
+  const preferred = Array.isArray(spec.defaultSelected) ? spec.defaultSelected : [spec.defaultSelected];
+  const selected = Array.from(new Set(preferred.filter((name) => group.proxies.includes(name))));
+  if (selected.length > 0) {
+    // 优先项依次置顶，兼容不支持 default-selected 的旧内核，并保留原首选项的次序。
+    group.proxies = selected.concat(group.proxies.filter((name) => !selected.includes(name)));
+    group["default-selected"] = selected[0];
   }
   return group;
 }
