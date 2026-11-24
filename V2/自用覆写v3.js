@@ -33,7 +33,7 @@ const SETTINGS = {
   blockForeignQuic: true,
   // 生成“低倍率”手选组及其隐藏测速子组；判定规则见 isLowRateNode。
   enableLowRateGroup: true,
-  // 生成 AdBlock 组和广告域名规则；关闭后分组、规则集、规则一起不输出。
+  // 生成 AdBlock 组和拦截规则（广告及 T3 Code 遥测等）；关闭后分组、规则集、规则一起不输出。
   enableAdBlock: true,
   enableLoadBalance: true,
   loadBalanceStrategy: "sticky-sessions",
@@ -87,6 +87,7 @@ const ROOTS = {
   emby666: "https://fastly.jsdelivr.net/gh/666OS/rules@release/mihomo/domain/",
   emos: "https://fastly.jsdelivr.net/gh/binaryu/emos-proxy-rule@main/rules/",
   adblock: "https://fastly.jsdelivr.net/gh/217heidai/adblockfilters@main/rules/",
+  micatRule: "https://fastly.jsdelivr.net/gh/MiCat-S/Rule@main/rules/surge/",
 };
 
 // ---------------------------------------------------------------------------
@@ -290,7 +291,7 @@ function aiSupportedRegions(service) {
 //   domain: "file" | ["file", root] | {file, root, key, stage}   域名 MRS，默认 MetaCubeX geosite
 //   ip:     同上                                                 IP MRS，默认 MetaCubeX geoip，规则带 no-resolve
 //   list:   "file" | {file, stage}                               个人 classical 文本，默认 ROOTS.personal
-//   more:   [{kind, file, root, key}]                            额外来源，key 必填
+//   more:   [{kind, file, root, key, stage}]                     额外来源，key 必填
 //   extra:  ["DOMAIN-SUFFIX,xxx", ...]                            不带出口的零散规则，出口为本组
 //   stage 取值 prefix / block / extra / domain / ip，决定规则位置，默认按类型：domain、list → domain，ip → ip。
 // ---------------------------------------------------------------------------
@@ -301,9 +302,14 @@ const DOMESTIC_ONLY = { direct: true, auto: false, countries: false, loadBalance
 const GAME_STORE = { direct: true, auto: false, countries: false, loadBalance: false, lowRate: true, nodes: COUNTRY_GROUP_NAMES };
 
 const SERVICE_SPECS = [
-  // 广告拦截：默认 REJECT，PASS 用于临时放行；不加入任何节点。规则排在所有服务规则之前。
+  // 广告与遥测拦截：默认 REJECT，PASS 用于临时放行；不加入任何节点。规则排在所有服务规则之前。
+  // T3Code 为完整 6 域名列表（含遥测与 T3 Connect/登录/推送相关域名），需要这些功能时可临时切 PASS。
   { name: AD_BLOCK_GROUP_NAME, head: ["REJECT", "REJECT-DROP", "PASS"], auto: false, countries: false, loadBalance: false, nodes: "none",
-    enabledBy: "enableAdBlock", rules: { domain: { file: "adblockmihomolite", root: ROOTS.adblock, stage: "block" } } },
+    enabledBy: "enableAdBlock",
+    rules: {
+      domain: { file: "adblockmihomolite", root: ROOTS.adblock, stage: "block" },
+      more: [{ kind: "list", key: "T3Code", file: "T3Code.list", root: ROOTS.micatRule, stage: "block" }],
+    } },
   { name: "1Password", direct: true, rules: { list: "1password.list" } },
 
   // AI 服务：ChatGPT / Gemini / Grok 默认 US，Claude 默认 REJECT；节点按各家官方支持范围过滤。
